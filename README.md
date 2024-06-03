@@ -49,16 +49,32 @@ This project implements the novel methodology described in Samuel Levy's researc
 
 ## Installation
 
-To run the project, you need Python and several libraries focused on machine learning and probabilistic modeling.
+To run the project, you need Python. First, clone the repository. For example:
 
 ```bash
-pip install -r requirements.txt
+git clone https://github.com/silevy/digitaltwins.git
+```
+Then, change directory to the package:
+
+```bash
+cd digitaltwins
+```
+Install the package with `pip`:
+
+```bash
+pip install .
+```
+If you have access to GPU, you can run this instead:
+
+```bash
+pip install .[gpu]
 ```
 
 Ensure that your environment is set up with the appropriate versions of these libraries to avoid compatibility issues. We recommend training on GPU, with CUDA installed. 
 
 ## Usage
 
+First, 
 To generate simulated data, navigate to the project directory and run sim.py
 
 ```bash

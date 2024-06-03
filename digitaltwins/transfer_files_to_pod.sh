@@ -9,7 +9,7 @@ REMOTE_HOST="213.173.110.31"
 REMOTE_DIR="/workspace"
 
 # List of files to transfer
-FILES=("model.py" "util.py" "main.py" "sim.py" "inout.py")
+FILES=("model.py" "util.py" "main.py" "sim.py" "inout.py" "eval.py" "post.py")
 
 # Loop through each file and transfer it using scp
 for FILE in "${FILES[@]}"; do
