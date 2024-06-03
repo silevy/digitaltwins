@@ -47,6 +47,11 @@ This project implements the novel methodology described in Samuel Levy's researc
   - Call `post_grid_search` to identify optimal marketing strategies via Bayesian optimization.
   - Use `post_latent_sites` and `post_Y_predictive` to analyze posterior samples of latent variables and brand affinity questions.
 
+### `sim.py`
+- **Purpose**: Generate synthetic data.
+  - `generate_synthetic_data()`: Generate synthetic "z" latent variables, from the common variables and neural network.
+  - `generate_samples()`: generate samples for perceptual variables from the latent.
+- **Usage**: when the user does not have any data, but wants to implement the model, he/she is allowed to generate synthetic data according to the model, due to its generative nature.
 
 
 ## Installation
