@@ -100,6 +100,12 @@ The loss function is as follows:
 
 ![Loss](digitaltwins/img/loss.png)
 
+To obtain posterior predictive distributions for each set of questions, run the following command:
+
+```bash
+run-plot
+```
+
 ## Contribution
 
 Contributions to this project are welcome! Please fork the repository, make your changes, and submit a pull request. For major changes, please open an issue first to discuss what you would like to change.
