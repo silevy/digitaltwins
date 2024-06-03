@@ -74,21 +74,20 @@ Ensure that your environment is set up with the appropriate versions of these li
 
 ## Usage
 
-First, 
-To generate simulated data, navigate to the project directory and run sim.py
+To generate simulated data, run the following:
 
 ```bash
-python sim.py
+run-sim
 ```
-This script generates different datasets, stored under a new folder named `simulated_data`.
+This command generates different datasets, stored under a new folder named `simulated_data`.
 
-To start using the project, and estimating the model, navigate to the project directory and run the main script:
+To start using the project, and estimating the model, run the following:
 
 ```bash
-python main.py
+run-main
 ```
 
-You can modify the script or use command-line arguments to customize the model's behavior, such as adjusting the number of training epochs or setting different parameters for Bayesian optimization.
+You can modify the script or use command-line arguments to customize the model's behavior, such as adjusting the number of training epochs or setting different hidden layers or hidden dimensions.
 
 ## Contribution
 
