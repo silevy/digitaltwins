@@ -438,7 +438,7 @@ def main():
     save_jax_array_as_npy(Y_c_2_optim, "Y_c_2_optim", "simulated_data")
     save_jax_array_as_npy(Y_c_3_optim, "Y_c_3_optim", "simulated_data")
     
-    save_jax_array_as_npy(J_c, "J_c", "simulated_data")
+    save_jax_array_as_npy(J_c, "J_c", "simulated_data") 
     save_jax_array_as_npy(J_u, "J_u", "simulated_data")
     with open('simulated_data/J_u_dict.pkl', 'wb') as f:
         pickle.dump(J_u_dict, f)
