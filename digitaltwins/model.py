@@ -544,26 +544,6 @@ def f_sample_Y(h: str,
                     obs=Y_u)
         
 
-# def f_sample_Y(h: str, N:int, K: int, T: int, Y, u, cutpoints,
-#                J_dict: dict, idx_start: dict, idx_end: dict, is_predictive: bool):
-    
-#     # transpose J to last dim to match cutpoints
-#     u_transpose = jnp.moveaxis(u[:,idx_start[h]:idx_end[h],:], source=1, destination=2)
-#     if not is_predictive:
-#         Y_tranpose = jnp.moveaxis(Y, source=1, destination=2)
-#     else:
-#         Y_tranpose = Y
-        
-#     with npr.plate('N', N, dim=-3), \
-#          npr.plate('T_trans', T, dim=-2), \
-#          npr.plate('J_' + h, J_dict[h], dim=-1):
-        
-#         npr.sample('Y_u_' + str(K) + '_' + h, 
-#                     dist.OrderedLogistic(predictor=u_transpose, 
-#                                          cutpoints=cutpoints[h]),
-#                     obs=Y_tranpose)
-
-
 
 ##############
 # UNIT TESTS #
