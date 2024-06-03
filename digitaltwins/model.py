@@ -5,8 +5,7 @@ import numpyro.infer.reparam as reparam
 from numpyro.contrib.module import flax_module
 from jax import numpy as jnp
 
-# from . import main, util
-import main, util
+from . import main, util
 
 ##########
 # MODELS #
