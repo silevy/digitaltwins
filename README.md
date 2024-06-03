@@ -1,5 +1,7 @@
 # Digital Marketing Twins Project Repository
 
+![Model Architecture](digitaltwins/img/model.png)
+
 ## Overview
 
 This project implements the novel methodology described in Samuel Levy's research paper on "Digital Marketing Twins." It uses deep generative models to analyze and predict customer behavior in counterfactual scenarios. The focus is on optimizing marketing strategies through the analysis of large-scale brand survey data from the U.S. wireless telecommunications market, but can be applied in any oligopolistic market. 
