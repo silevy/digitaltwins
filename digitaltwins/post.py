@@ -55,7 +55,7 @@ def post_latent_sites(rng_key,
                       model, 
                       guide,
                       K: int = 3, # three firms
-                      pkl_file_name :str = "param_model.pkl"):
+                      pkl_file_name :str = "param.pkl"):
 
     # load params #
     with open(os.path.join(inout.RESULTS_DIR, pkl_file_name), 'rb') as f:
@@ -114,7 +114,7 @@ def post_Y_predictive(rng_key,
                       args,
                       model, 
                       guide,
-                      pkl_file_name :str = "param_model.pkl"):
+                      pkl_file_name :str = "param.pkl"):
 
     # load params #
     with open(os.path.join(inout.RESULTS_DIR, pkl_file_name), 'rb') as f:
