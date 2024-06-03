@@ -1,0 +1,84 @@
+# Digital Marketing Twins Project Repository
+
+## Overview
+
+This project implements the novel methodology described in Samuel Levy's research paper on "Digital Marketing Twins." It uses deep generative models to analyze and predict customer behavior in counterfactual scenarios. The focus is on optimizing marketing strategies through the analysis of large-scale brand survey data from the U.S. wireless telecommunications market, but can be applied in any oligopolistic market. 
+
+## File Descriptions
+
+
+### `main.py`
+
+- **Purpose**: Contains the core logic for model operation including initialization, training, evaluation, and prediction.
+- **Components**:
+  - **Model Definition**: Sets up the generative model and its guide for variational inference.
+  - **Training and Testing Loops**: Manage the iterative process of training the model and evaluating its performance.
+  - **Estimation Functions**: `estimate()` and `predictive()` functions manage the estimation of model parameters and making predictions, crucial for the exploration of counterfactual scenarios in marketing.
+
+### `inout.py`
+
+- **Purpose**: Manages the input and output operations related to data handling. It loads and preprocesses datasets to fit the model's requirements.
+- **Functions**:
+  - `load_dataset()`: Loads data and initializes datasets for model processing.
+  - `fetch_all_u()` and `fetch_all_c()`: Fetch mini-batches of user and control data, respectively, facilitating efficient data processing during model training and testing.
+
+### `model.py`
+
+
+##### `model_full`
+
+- **Description**: Implements the core deep generative model that utilizes Bayesian optimization and variational inference to predict customer behavior in counterfactual marketing scenarios.
+- **Main Features**:
+  - **Generative Model**: Constructs and trains a neural network-based model to simulate customer responses.
+  - **Variational Inference**: Efficiently estimates model parameters and latent structures.
+  - **Training Loop**: Manages data batching, epoch iterations, and performance evaluation using JAX's capabilities.
+- **Usage**: Called within the main training loop to fit the model to data and refine marketing strategies based on simulated outcomes.
+
+### `optim.py`
+
+- **Purpose**: Implements optimization algorithms, particularly grid search, to maximize brand affinity and customer satisfaction.
+- **Key Functions**:
+  - `post_grid_search()`: Conducts grid search on posterior predictive distributions to identify optimal marketing strategies.
+  - `post_latent_sites()`: Samples latent variables (`alpha`, `beta`, `phi`) from posterior distributions for further analysis.
+  - `post_Y_predictive()`: Generates posterior predictive samples for customer-side brand affinity questions.
+- **Usage**:
+  - Call `post_grid_search` to identify optimal marketing strategies via Bayesian optimization.
+  - Use `post_latent_sites` and `post_Y_predictive` to analyze posterior samples of latent variables and brand affinity questions.
+
+
+
+## Installation
+
+To run the project, you need Python and several libraries focused on machine learning and probabilistic modeling.
+
+```bash
+pip install -r requirements.txt
+```
+
+Ensure that your environment is set up with the appropriate versions of these libraries to avoid compatibility issues. We recommend training on GPU, with CUDA installed. 
+
+## Usage
+
+To generate simulated data, navigate to the project directory and run sim.py
+
+```bash
+python sim.py
+```
+This script generates different datasets, stored under a new folder named `simulated_data`.
+
+To start using the project, and estimating the model, navigate to the project directory and run the main script:
+
+```bash
+python main.py
+```
+
+You can modify the script or use command-line arguments to customize the model's behavior, such as adjusting the number of training epochs or setting different parameters for Bayesian optimization.
+
+## Contribution
+
+Contributions to this project are welcome! Please fork the repository, make your changes, and submit a pull request. For major changes, please open an issue first to discuss what you would like to change.
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
