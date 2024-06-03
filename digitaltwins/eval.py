@@ -5,8 +5,8 @@ import inspect
 from scipy import stats
 
 HOME_PATH = os.path.dirname(inspect.getfile(lambda: None))
-EVAL_DIR = os.path.join(HOME_PATH, 'eval')
-RESULTS_DIR = os.path.join(HOME_PATH, 'results')
+EVAL_DIR = os.path.join('eval')
+RESULTS_DIR = os.path.join('results')
 os.makedirs(EVAL_DIR, exist_ok=True)
 
 parser = argparse.ArgumentParser(description='Load numpy files and print their shapes and first n rows.')

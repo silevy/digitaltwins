@@ -4,8 +4,8 @@ import os
 import matplotlib.pyplot as plt
 
 parser = argparse.ArgumentParser(description='Generate plots from numpy files.')
-parser.add_argument('--directory', default="digitaltwins/results", type=str, help='Directory containing the numpy files')
-parser.add_argument('--output-directory', default="digitaltwins/plots", type=str, help='Directory to save the output plots')
+parser.add_argument('--directory', default="results", type=str, help='Directory containing the numpy files')
+parser.add_argument('--output-directory', default="plots", type=str, help='Directory to save the output plots')
 
 args = parser.parse_args()
 

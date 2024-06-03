@@ -23,7 +23,7 @@ from jax import random
 
 HOME_PATH = os.path.dirname(inspect.getfile(lambda: None))
 DATA_DIR = os.path.join(HOME_PATH, 'data')
-RESULTS_DIR = os.path.join(HOME_PATH, 'results')
+RESULTS_DIR = os.path.join('results')
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
 parser = argparse.ArgumentParser(description='parse args')
