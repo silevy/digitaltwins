@@ -89,6 +89,10 @@ run-main
 
 You can modify the script or use command-line arguments to customize the model's behavior, such as adjusting the number of training epochs or setting different hidden layers or hidden dimensions.
 
+The loss function is as follows:
+
+![Loss](digitaltwins/img/loss.pdf)
+
 ## Contribution
 
 Contributions to this project are welcome! Please fork the repository, make your changes, and submit a pull request. For major changes, please open an issue first to discuss what you would like to change.
