@@ -91,7 +91,7 @@ You can modify the script or use command-line arguments to customize the model's
 
 The loss function is as follows:
 
-![Loss](digitaltwins/img/loss.pdf)
+![Loss](digitaltwins/img/loss.png)
 
 ## Contribution
 
