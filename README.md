@@ -62,7 +62,7 @@ cd digitaltwins
 Install the package with `pip`:
 
 ```bash
-pip install .
+pip install .[cpu]
 ```
 If you have access to GPU, you can run this instead:
 

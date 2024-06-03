@@ -32,9 +32,11 @@ setup(
     name='digitaltwins',
     version='0.1',
     packages=find_packages(),
-    install_requires=load_requirements('requirements_cpu.txt'),
+    install_requires=load_requirements('requirements.txt'),
     extras_require={
-        'gpu': load_requirements('requirements_gpu.txt')
+        'gpu': load_requirements('requirements_gpu.txt'),
+        'cpu': load_requirements('requirements_cpu.txt')
+
     },
     entry_points={
         'console_scripts': [
