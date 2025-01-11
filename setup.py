@@ -19,7 +19,9 @@ setup(
             'run-main=digitaltwins.main:main',
             'run-sim=digitaltwins.sim:main',
             'run-eval=digitaltwins.eval:main',
-            'run-plot=digitaltwins.plot:main',
+            'run-plot=digitaltwins.plot_quantiles:main',
+            'run-summary-sim=digitaltwins.summary_sim:main',
+
         ],
     },
     description='Digital Twins package, which simulates data and estimates the model',

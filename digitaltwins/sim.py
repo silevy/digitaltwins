@@ -64,12 +64,14 @@ class PhiNN(nn.Module):
 class IdealPointNN(nn.Module):
     hidden_size1: int
     hidden_size2: int
+    hidden_size3: int
     output_size: int
     
     def setup(self):
         self.norm_layer = nn.LayerNorm()
         # self.layer1 = nn.Dense(self.hidden_size1, kernel_init=nn.initializers.lecun_normal())
         # self.layer2 = nn.Dense(self.hidden_size2, kernel_init=nn.initializers.lecun_normal())
+        # self.layer3 = nn.Dense(self.hidden_size3, kernel_init=nn.initializers.lecun_normal())
         self.layer = nn.Dense(self.hidden_size1, kernel_init=nn.initializers.lecun_normal())
         self.mu_layer = nn.Dense(self.output_size, kernel_init=nn.initializers.lecun_normal())
         self.sig_layer = nn.Dense(self.output_size, kernel_init=nn.initializers.lecun_normal())
@@ -79,18 +81,19 @@ class IdealPointNN(nn.Module):
         x = self.norm_layer(x)
         # x = nn.tanh(self.layer1(x))
         # x = nn.tanh(self.layer2(x))
+        # x = nn.tanh(self.layer3(x))
         x = nn.tanh(self.layer(x))
-        concentration = 10.0 * self.mu_layer(x)
+        concentration = self.mu_layer(x)
         rate = jnp.exp(self.sig_layer(x))
         return concentration, rate
     
 # Function to generate synthetic data
-def generate_synthetic_data(key, Y_c, hidden_size1=128, hidden_size2=64, output_size=1, L=50, Q=5):
+def generate_synthetic_data(key, Y_c, hidden_size1=128, hidden_size2=64, hidden_size3=32, output_size=1, L=50, Q=5):
     assert Y_c.ndim == 3, f"Input Y_c should have 3 dimensions, but got {Y_c.ndim}"
     N, T, J = Y_c.shape
 
     # Initialize the PhiNN model
-    z_nn = IdealPointNN(hidden_size1=hidden_size1, hidden_size2=hidden_size2, output_size=1)
+    z_nn = IdealPointNN(hidden_size1=hidden_size1, hidden_size2=hidden_size2, hidden_size3=hidden_size3, output_size=1)
     phi_nn = PhiNN(hidden_size1=hidden_size1, hidden_size2=hidden_size2, output_size=L)
     
     dummy_input_z = jnp.ones((N, T, J))
@@ -153,6 +156,8 @@ def f_sample_K(K: int,
             alpha = npr.sample('alpha_' + str(K), dist.Normal().expand([T]).to_event(1))
         
         with npr.plate('L', L, dim=-2), npr.plate('T', T, dim=-1):
+            # phi = npr.sample('phi_' + str(K), dist.Gamma(1.0, 1.0))
+
             if phi_nn is not None:
                 concen_phi, rate_phi = phi_nn.apply(model_params_phi, Y_q)
                 phi = npr.sample('phi_' + str(K), dist.Gamma(concen_phi.T, rate_phi.T))
@@ -162,7 +167,8 @@ def f_sample_K(K: int,
                 
     # broadcasting to dim(N,J,T)
     alpha = jnp.repeat(alpha[None,:,:], repeats=N, axis=0)
-    betaphi = jnp.repeat(jnp.expand_dims(jnp.square(beta) @ phi, 0), repeats=N, axis=0)
+    # betaphi = jnp.repeat(jnp.expand_dims(jnp.square(beta) @ phi, 0), repeats=N, axis=0)
+    betaphi = (1 / L) * jnp.repeat(jnp.expand_dims(beta @ phi, 0), repeats=N, axis=0)
     z = jnp.repeat(jnp.expand_dims(z, 1), repeats=J_u, axis=1)
     
     # assert alpha.shape == betaphi.shape and alpha.shape == z.shape
@@ -170,8 +176,40 @@ def f_sample_K(K: int,
 
     # likelihood
     u = alpha + z * betaphi     # dim(N,J,T)
+    npr.deterministic('u_' + str(K), u)
+
     for h, y in Y_u.items():
         f_sample_Y(h, N, K, T, y, u, cutpoints, J_u_dict, J_u_idx_start, J_u_idx_end)
+
+
+    # # >>>>>>>>>>> REGULARIZE alpha & beta <<<<<<<<<<<
+    # with npr.handlers.scale(scale=scale_term):
+    #     with npr.plate('J_u', J_u):
+    #         # Instead of dist.Normal(0, 1), try smaller std dev:
+    #         alpha = npr.sample('alpha_' + str(K), dist.Normal(0.0, 0.1).expand([T]).to_event(1))
+        
+    #     with npr.plate('L', L, dim=-2), npr.plate('T', T, dim=-1):
+    #         if phi_nn is not None:
+    #             concen_phi, rate_phi = phi_nn.apply(model_params_phi, Y_q)
+    #             phi = npr.sample('phi_' + str(K), dist.Gamma(concen_phi.T, rate_phi.T))
+    #         else:
+    #             # narrower Gamma prior can help too:
+    #             phi = npr.sample('phi_' + str(K), dist.Gamma(2.0, 2.0))
+
+    # # >>>>>>>>>> ADD A SCALING PARAMETER <<<<<<<<<<<
+    # # One global scale factor for the linear predictor
+    # predictor_scale = npr.sample(f"predictor_scale_{K}", dist.HalfNormal(1.0))
+
+    # # Broadcasting to dim(N,J,T)
+    # alpha = jnp.repeat(alpha[None, :, :], repeats=N, axis=0)
+    # betaphi = jnp.repeat(jnp.expand_dims(jnp.square(beta) @ phi, 0), repeats=N, axis=0)
+    # z = jnp.repeat(jnp.expand_dims(z, 1), repeats=J_u, axis=1)
+
+    # # SCALING the predictor
+    # u = predictor_scale * (alpha + z * betaphi)  # <-- scaled predictor
+
+    # for h, y in Y_u.items():
+    #     f_sample_Y(h, N, K, T, y, u, cutpoints, J_u_dict, J_u_idx_start, J_u_idx_end)
 
 
 # Probabilistic model function, equations 3.8 - 3.10 in the paper
@@ -189,10 +227,22 @@ def probabilistic_model(Y_c, mu_z, sig_z, Y_1_dummy, Y_2_dummy, Y_3_dummy,
                 transforms.AffineTransform(mu_z.squeeze(), sig_z.squeeze())
             ))
         
+    # with npr.handlers.scale(scale=scale_term):
+    #     with npr.plate('J_u', J_u):
+    #         beta = npr.sample('beta', dist.Normal().expand([L]).to_event(1))
+    
     with npr.handlers.scale(scale=scale_term):
         with npr.plate('J_u', J_u):
-            beta = npr.sample('beta', dist.Normal().expand([L]).to_event(1))
-        
+            # beta ~ N_+(0,1), truncated to be strictly positive
+            beta = npr.sample(
+                'beta',
+                dist.TruncatedNormal(
+                    low=0.0,
+                    loc=jnp.zeros(L),
+                    scale=jnp.ones(L)
+                ).to_event(1)
+            )
+
     cutpoints = {}
     
     for h, j in J_u_dict.items():
@@ -200,7 +250,7 @@ def probabilistic_model(Y_c, mu_z, sig_z, Y_1_dummy, Y_2_dummy, Y_3_dummy,
             with npr.handlers.reparam(config={'c_' + h: TransformReparam()}):
                 cutpoints[h] = npr.sample('c_' + h, 
                         dist.TransformedDistribution(
-                                dist.Dirichlet(jnp.ones([H_CUTOFFS[h]+1])),
+                                dist.Dirichlet(5.0 * jnp.ones([H_CUTOFFS[h]+1])),
                                 dist.transforms.SimplexToOrderedTransform()
                                 ))
                     

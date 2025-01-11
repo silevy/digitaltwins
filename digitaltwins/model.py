@@ -507,7 +507,7 @@ def f_sample_K(K: int,
                 
     # broadcasting to dim(N,J,T)
     alpha = jnp.repeat(alpha[None,:,:], repeats=N, axis=0)
-    betaphi = jnp.repeat(jnp.expand_dims(jnp.square(beta) @ phi, 0), repeats=N, axis=0)
+    betaphi = (1/L) * jnp.repeat(jnp.expand_dims(jnp.square(beta) @ phi, 0), repeats=N, axis=0)
     z = jnp.repeat(jnp.expand_dims(z, 1), repeats=J_u, axis=1)
     
     assert alpha.shape == betaphi.shape and alpha.shape == z.shape
