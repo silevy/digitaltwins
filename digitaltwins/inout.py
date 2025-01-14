@@ -201,8 +201,10 @@ def load_dataset(rng_key, batch_size, N_split):
     # batch sizes
     N_arr = [Y_c_1_static.shape[0], Y_c_2_static.shape[0], Y_c_3_static.shape[0]]
     N_max = numpy.max(N_arr)
-    batch_num_train = (N_max-N_split) // batch_size + 1
-    batch_num_test = N_split // batch_size + 1
+    # batch_num_train = (N_max-N_split) // batch_size + 1
+    # batch_num_test = N_split // batch_size + 1
+    batch_num_train = (N_max - N_split + batch_size - 1) // batch_size
+    batch_num_test  = (N_split + batch_size - 1) // batch_size
 
     # create train vs. test randomized indices
     rng_key, rng_key_perm = random.split(rng_key, 2)

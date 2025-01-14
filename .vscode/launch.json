@@ -1,0 +1,43 @@
+// .vscode/launch.json
+{
+    "version": "0.2.0",
+    "configurations": [
+      {
+        // 1) Debug main_hmc.py
+        "name": "Debug: digitaltwins.main",
+        "type": "debugpy",
+        "request": "launch",
+        "module": "digitaltwins.main",       // <-- run as `python -m digitaltwins.main_hmc`
+        "cwd": "${workspaceFolder}",
+        "console": "integratedTerminal",
+        "justMyCode": true,
+        "args": [
+          "--method=mcmc",
+          "--seed=42",
+          "--num-warmup=100",
+          "--num-samples=100",
+          "--batch-size=64",
+        ],
+        // "args": [
+        //   "--method=svi",
+        // ]
+      },
+      {
+        // 2) Debug plot_quantiles.py
+        "name": "Debug: digitaltwins.plot_quantiles",
+        "type": "debugpy",
+        "request": "launch",
+        "module": "digitaltwins.plot_quantiles", // <-- run as `python -m digitaltwins.plot_quantiles`
+        "cwd": "${workspaceFolder}",
+        "console": "integratedTerminal",
+        "justMyCode": true,
+        // "args": [
+        //   "--directory",
+        //   "results",
+        //   "--output-directory",
+        //   "plots"
+        // ]
+      }
+    ]
+  }
+  

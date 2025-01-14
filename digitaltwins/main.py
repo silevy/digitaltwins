@@ -10,6 +10,7 @@ import optax
 import numpyro as npr
 import numpyro.infer as infer
 from jax import (jit, lax, random)
+import jax.numpy as jnp
 
 from . import model, inout, post, optim
 
@@ -24,6 +25,9 @@ H_CUTOFFS = {"11" : 10, "10": 9, "5" : 4}
 parser = argparse.ArgumentParser(description='parse args')
 # parser.add_argument('--is-predictive', default=False, type=bool)
 parser.add_argument('--is-predictive', default=False, action=argparse.BooleanOptionalAction)
+parser.add_argument('--method', default='svi', choices=['svi', 'mcmc'], 
+                    help='Select which inference method to use: svi or mcmc (default: svi)'
+)
 parser.add_argument('--seed', default=2, type=int)
 parser.add_argument('--num-epochs', default=5001, type=int)
 parser.add_argument('--epoch-save', default=1000, type=int)
@@ -35,6 +39,14 @@ parser.add_argument('--latent-dims', default=50, type=int)
 parser.add_argument('--hidden-dims', default=512, type=int)
 parser.add_argument('--learning-rate', default=1e-5, type=float)
 parser.add_argument('--decay-rate', default=0.95, type=float)
+
+# For MCMC:
+parser.add_argument('--num-warmup', default=1000, type=int, help='Number of warm-up steps for NUTS')
+parser.add_argument('--num-samples', default=2000, type=int, help='Number of MCMC samples')
+parser.add_argument('--num-chains', default=1, type=int, help='Number of chains (parallel or sequential)')
+parser.add_argument('--mcmc-output', default='mcmc_samples.pkl', type=str,
+                    help='Filename to save MCMC samples (Pickle)')
+
 args = parser.parse_args()
 
 #######
@@ -60,22 +72,25 @@ def main():
         # jax.config.update("jax_default_device", jax.devices("cpu")[0])
         predictive(rng_key, target_model, target_guide, args)
     else:
-        estimate(rng_key, target_model, target_guide, args)
+        if args.method == 'svi':
+            estimate_svi(rng_key, target_model, target_guide, args)
+        if args.method == 'mcmc':
+            estimate_mcmc(rng_key, target_model, args)
 
 def predictive(rng_key, target_model, target_guide, args):
     rng_key, rng_predictive = random.split(rng_key, 2)
     # # step 1 - run grid search
-    optim.post_grid_search(rng_predictive, args, target_model, target_guide, pkl_file_name = "param.pkl", is_digital_twins = True, digital_twins_k_idx = 1)
-    optim.post_grid_search(rng_predictive, args, target_model, target_guide, pkl_file_name = "param.pkl", is_digital_twins = True, digital_twins_k_idx = 2)
-    optim.post_grid_search(rng_predictive, args, target_model, target_guide, pkl_file_name = "param.pkl", is_digital_twins = True, digital_twins_k_idx = 3)
+    # optim.post_grid_search(rng_predictive, args, target_model, target_guide, pkl_file_name = "param.pkl", is_digital_twins = True, digital_twins_k_idx = 1)
+    # optim.post_grid_search(rng_predictive, args, target_model, target_guide, pkl_file_name = "param.pkl", is_digital_twins = True, digital_twins_k_idx = 2)
+    # optim.post_grid_search(rng_predictive, args, target_model, target_guide, pkl_file_name = "param.pkl", is_digital_twins = True, digital_twins_k_idx = 3)
     # step 2 - generate posterior samples on alpha, beta, phi
-    post.post_latent_sites(rng_predictive, args, target_model, target_guide)
+    # post.post_latent_sites(rng_predictive, args, target_model, target_guide)
     # step 3 - generate posterior predictive samples on Y_u
     post.post_Y_predictive(rng_predictive, args, target_model, target_guide)
 
 
 
-def estimate(rng_key, target_model, target_guide, args):
+def estimate_svi(rng_key, target_model, target_guide, args):
     # load data
     rng_key, rng_etl = random.split(rng_key, 2)
     (   J_c, J_u, J_u_dict, J_u_idx_start, J_u_idx_end, Q, T,
@@ -214,6 +229,10 @@ def estimate(rng_key, target_model, target_guide, args):
     f_epochs.close()
     f_mae.close()
     
+    rng_key, rng_key_recon_all = random.split(rng_key, 2)
+
+    post.reconstruct_all(rng_key_recon_all, target_model, target_guide, params, 
+                                   fetch_all_u, fetch_all_c, batch_num_train, batch_num_test, static_kwargs)
 
     # Plotting the loss history
     plottitle = f"model_{args.num_epochs}_{args.batch_size}_{date_time}_losshistory.pdf"
@@ -239,7 +258,166 @@ def estimate(rng_key, target_model, target_guide, args):
     with open(os.path.join(inout.RESULTS_DIR, f"param.pkl"), 'wb') as f:
         pickle.dump(param_post, f)
 
+
+def estimate_mcmc(rng_key, target_model, args):
+
+    """Runs the Digital Twins model via MCMC (HMC/NUTS)."""
+    # Enable double precision and turn on validation
+    npr.enable_x64()
+    npr.enable_validation()
+
+    # Random seed
+    rng_key = random.PRNGKey(args.seed)
+
+    # ----------- 1) Select the model -----------
+    target_model = model.model_full  # or model_noPredictors, etc.
+
+    # ----------- 2) Load Data -----------
+    rng_key, rng_data = random.split(rng_key, 2)
+    (   J_c, J_u, J_u_dict, J_u_idx_start, J_u_idx_end, Q, T,
+        Y_q_1, Y_q_2, Y_q_3,
+        batch_num_train, batch_num_test,
+        fetch_train, fetch_test,
+        fetch_all_u, fetch_all_c
+    ) = inout.load_dataset(rng_key=rng_data,
+                           batch_size=args.batch_size,
+                           N_split=args.train_test)
+
+    # We only need a single “full” dataset to pass to NUTS,
+    # but if data is large, you may want to subsample or map 
+    # across mini-batches. For now, we'll pass everything at once.
+    # Typically, you’d combine them the same way your model expects.
+
+    # Example if the model expects:
+    #   Y_u_1_11, Y_u_1_10, Y_u_1_5, ...
+    # You can fetch the entire dataset with `fetch_all_u(0)`, etc.
+
+    # data_train = {}
+    data_u = {}
+    data_c = {}
+    # total number of batches is (batch_num_train + batch_num_test)
+
+    for i in range(batch_num_train + batch_num_test):
+        # 1) Grab data from batch i
+        u_dict = fetch_all_u(i)  # e.g. {'Y_u_1_5': ..., 'Y_u_1_10': ...}
+        c_dict = fetch_all_c(i)  # e.g. {'Y_c_1_static': ..., 'Y_c_1_optim': ...}
+
+        # 2) Append each array to the corresponding list in all_u, all_c
+        for k, v in u_dict.items():
+            if k not in data_u:
+                data_u[k] = []
+            data_u[k].append(v)
+
+        for k, v in c_dict.items():
+            if k not in data_c:
+                data_c[k] = []
+            data_c[k].append(v)
+
+    for k in data_u:
+        data_u[k] = jnp.concatenate(data_u[k], axis=0)  # merges along N dimension
+
+    for k in data_c:
+        data_c[k] = jnp.concatenate(data_c[k], axis=0)
+
+    data_u2 = fetch_all_u(0)
+    data_c2 = fetch_all_c(0)
+
+    # Combine all relevant arrays into a single dict
+    # that we can pass to MCMC's .run(...) as **kwargs:
+    model_kwargs = {
+        **data_u2,
+        **data_c2,
+        'J_c': J_c,
+        'J_u': J_u,
+        'J_u_dict': J_u_dict,
+        'J_u_idx_start': J_u_idx_start,
+        'J_u_idx_end': J_u_idx_end,
+        'Q': Q,
+        'T': T,
+        'L': 50,               # default latent_dims
+        'hidden_dim': 512,     # default hidden_dims
+        'scale_term': 1.0 / batch_num_train,
+        # ... if the model expects Y_q_1, Y_q_2, Y_q_3:
+        'Y_q_1': Y_q_1,
+        'Y_q_2': Y_q_2,
+        'Y_q_3': Y_q_3,
+    }
+
+    # ----------- 3) Define NUTS / MCMC -----------
+    nuts_kernel = infer.NUTS(target_model)
+    infer.initialization.init_to_median()
     
+    mcmc = infer.MCMC(
+        nuts_kernel,
+        num_warmup=args.num_warmup,
+        num_samples=args.num_samples,
+        num_chains=args.num_chains,
+        chain_method="parallel"  # or "sequential" if GPU memory is low
+    )
+
+    # ----------- 4) Run MCMC -----------
+    print(f"Starting NUTS with {args.num_warmup} warmup steps, "
+          f"{args.num_samples} samples, {args.num_chains} chain(s).")
+    t_start = time.time()
+    mcmc.run(rng_key, **model_kwargs)
+    t_end = time.time()
+    print(f"MCMC completed in {t_end - t_start:.2f} seconds.")
+
+    # ----------- 5) Extract and save samples -----------
+    samples = mcmc.get_samples(group_by_chain=False)
+    # If you want chain-by-chain: 
+    # samples = mcmc.get_samples(group_by_chain=True)
+
+    # 1) Create "mcmc" subfolder if not already present
+    mcmc_folder = os.path.join('results', 'mcmc')
+    os.makedirs(mcmc_folder, exist_ok=True)
+
+    # Optionally, save to a file
+    # 2) Save MCMC samples to "mcmc" subfolder
+    pkl_path_save = os.path.join(mcmc_folder, args.mcmc_output)  # e.g., "mcmc_samples.pkl"
+    with open(pkl_path_save, 'wb') as f:
+        pickle.dump(samples, f)
+    print(f"Saved MCMC samples to {pkl_path_save}")
+
+    static_kwargs = {   'Y_q_1' : Y_q_1, 
+                        'Y_q_2' : Y_q_2, 
+                        'Y_q_3' : Y_q_3,
+                        'J_u_dict' : J_u_dict, 
+                        'J_u_idx_start' : J_u_idx_start, 
+                        'J_u_idx_end' : J_u_idx_end,
+                        'J_c' : J_c, 'J_u' : J_u, 'Q' : Q, 'T' : T,  
+                        'L' : args.latent_dims, 
+                        'hidden_dim' : args.hidden_dims,
+                        'scale_term' : 1.0 / batch_num_train    }
+
+
+    # Path to the pickle file you created in main_hmc.py
+    pkl_path = os.path.join(mcmc_folder, 'mcmc_samples.pkl')  
+
+    with open(pkl_path, 'rb') as f:
+        samples = pickle.load(f)
+
+    print("Loaded MCMC samples:", samples.keys())
+
+    # ----------- 6) Optional Posterior Summaries -----------
+    # summary = npr.diagnostics.summary(samples)
+    # print("MCMC Summary:\n", summary)
+
+    # Suppose we want to run the posterior predictive on N_batch of data:
+    rng_key, rng_key_ppc = random.split(rng_key, 2)
+    mae = post.reconstruct_mcmc(
+        rng_key_ppc,
+        model=target_model,
+        mcmc_samples=samples,
+        fetch_all_u=fetch_all_u,
+        fetch_all_c=fetch_all_c,
+        static_kwargs=static_kwargs,
+        N_batch=args.batch_post
+    )
+    print("MAE from MCMC-based posterior predictive:", mae)
+
+
+
 #########
 ## run ##
 #########
