@@ -3,6 +3,8 @@ import numpyro as npr
 import numpyro.distributions as dist
 import numpyro.infer.reparam as reparam
 from numpyro.contrib.module import flax_module
+from numpyro.contrib.module import random_flax_module
+
 from jax import numpy as jnp
 
 from . import main, util
@@ -66,20 +68,25 @@ def model_full(Y_u_1_11: jnp.ndarray = None,   # uncommon variables, in scale po
 
     # amortization NNs
     phi_nn = flax_module("phi_nn", 
-                         util.PhiNN(hidden_size1=hidden_dim, 
+                         util.PhiNN(
+                                    hidden_size1=hidden_dim, 
                                     hidden_size2=hidden_dim * 2,
                                     output_size=L), 
                          input_shape=(T,Q))
     
     z_nn = flax_module("z_nn", 
-                         util.IdealPointNN(hidden_size1=hidden_dim, 
+                         util.IdealPointNN(
+                                           hidden_size1=hidden_dim, 
                                            hidden_size2=hidden_dim * 2,
                                            output_size=1), 
                          input_shape=Y_c.shape)      
     
-
     # priors
     mu_z, sig_z = z_nn(Y_c) # each output should be (N*3, T)
+
+    #############################
+
+
     with npr.plate('N_total', N*3, dim=-2), npr.plate('T', T, dim=-1):
         with npr.handlers.reparam(config={'z': reparam.TransformReparam()}):
             z = npr.sample('z', dist.TransformedDistribution(
@@ -132,6 +139,168 @@ def model_full(Y_u_1_11: jnp.ndarray = None,   # uncommon variables, in scale po
     partialized_f_sample_K(1, Y_1, Y_q_1, z_1)
     partialized_f_sample_K(2, Y_2, Y_q_2, z_2)
     partialized_f_sample_K(3, Y_3, Y_q_3, z_3)
+
+
+
+
+def model_mcmc(Y_u_1_11: jnp.ndarray = None,   # uncommon variables, in scale points, dim=(N,J,T) tensor
+               Y_u_1_10: jnp.ndarray = None,
+               Y_u_1_5: jnp.ndarray = None,
+
+               Y_u_2_11: jnp.ndarray = None,   # uncommon variables, in scale points, dim=(N,J,T) tensor
+               Y_u_2_10: jnp.ndarray = None,
+               Y_u_2_5: jnp.ndarray = None,
+               
+               Y_u_3_11: jnp.ndarray = None,   # uncommon variables, in scale points, dim=(N,J,T) tensor
+               Y_u_3_10: jnp.ndarray = None,
+               Y_u_3_5: jnp.ndarray = None,
+               
+               Y_c_1_static: jnp.ndarray = None,       # STATIC common variables one-hot encoded, dim=(N,J_c_static,T) tensor
+               Y_c_2_static: jnp.ndarray = None,       # input shape +2 for (t, k)
+               Y_c_3_static: jnp.ndarray = None,
+               
+               Y_c_1_optim: jnp.ndarray = None,       # OPTIM common variables all continuous, dim=(N,J_c_optim,T) tensor
+               Y_c_2_optim: jnp.ndarray = None,       
+               Y_c_3_optim: jnp.ndarray = None,
+               
+               ###################################################
+               # input variables below static across minibatches #
+               ###################################################
+
+               Y_q_1: jnp.ndarray = None,       # firm-level SEC 10-Q fields, dim=(T,dim(Q)) tensor
+               Y_q_2: jnp.ndarray = None,
+               Y_q_3: jnp.ndarray = None,
+               
+               J_c: int = None,                 # dim of common questions
+               J_u: int = None,                 # dim uncommon questions, total
+               J_u_dict: dict = None,           # dim uncommon questions, by type
+               J_u_idx_start: dict = None,      # indices of uncommons, starting
+               J_u_idx_end: dict = None,        # indices of uncommons, ending
+               L: int = None,                   # dim of (latent) service quality
+               Q: int = None,                   # dim of 10-Q fields
+               T: int = None,                   # dim of quarters
+               hidden_dim: int = None,
+               scale_term: float = None):
+
+    assert Y_c_1_static.shape[0] == Y_c_2_static.shape[0] and \
+           Y_c_1_static.shape[0] == Y_c_3_static.shape[0]
+
+    N = Y_c_1_static.shape[0]
+        
+    # concatenaate Y_c
+    Y_c = jnp.concatenate(
+                [   jnp.concatenate([Y_c_1_static, Y_c_2_static, Y_c_3_static], axis=0),
+                    jnp.concatenate([Y_c_1_optim, Y_c_2_optim, Y_c_3_optim], axis=0)    ],
+                axis=1
+            )
+    Y_c = jnp.moveaxis(Y_c, source=2, destination=1)
+    
+    ##############################
+    # Bayesian NN:
+
+    # Define priors for PhiNN
+    # phi_nn_prior = {
+    #     "layer.kernel": dist.Normal(0, 1),  # Weights
+    #     "layer.bias": dist.Normal(0, 1),   # Bias
+    #     "mu_layer.kernel": dist.Normal(0, 1),
+    #     "mu_layer.bias": dist.Normal(0, 1),
+    #     "sig_layer.kernel": dist.Normal(0, 1),
+    #     "sig_layer.bias": dist.Normal(0, 1),
+    # }
+
+    # # Define priors for IdealPointNN
+    # z_nn_prior = {
+    #     "layer.kernel": dist.Normal(0, 1),
+    #     "layer.bias": dist.Normal(0, 1),
+    #     "mu_layer.kernel": dist.Normal(0, 1),
+    #     "mu_layer.bias": dist.Normal(0, 1),
+    #     "sig_layer.kernel": dist.Normal(0, 1),
+    #     "sig_layer.bias": dist.Normal(0, 1),
+    # }
+
+    # Define priors for PhiNN
+    phi_nn_prior = dist.Normal(0, 0.1)  # Weights
+
+    # # Define priors for IdealPointNN
+    z_nn_prior = dist.Normal(0, 0.1)
+
+    # Sample the Bayesian neural networks
+    phi_nn = random_flax_module(
+        "phi_nn",
+        util.PhiNN(hidden_size1=hidden_dim, hidden_size2=hidden_dim * 2, output_size=L),
+        prior=phi_nn_prior,
+        input_shape=(T, Q),
+        # input_shape=(),
+    )
+
+    z_nn = random_flax_module(
+        "z_nn",
+        util.IdealPointNN(hidden_size1=hidden_dim, hidden_size2=hidden_dim * 2, output_size=1),
+        prior=z_nn_prior,
+        input_shape=Y_c.shape,
+        # input_shape=()
+    )
+
+    ##############################
+
+    
+    # Forward pass through the Bayesian NNs
+    mu_z, sig_z = z_nn(Y_c)  # For IdealPointNN
+
+
+    with npr.plate('N_total', N*3, dim=-2), npr.plate('T', T, dim=-1):
+        with npr.handlers.reparam(config={'z': reparam.TransformReparam()}):
+            z = npr.sample('z', dist.TransformedDistribution(
+                                    dist.Normal(),
+                                    dist.transforms.AffineTransform(mu_z.squeeze(), sig_z.squeeze())
+                                    ))
+    
+    with npr.handlers.scale(scale=scale_term):
+        with npr.plate('J_u', J_u):
+            beta = npr.sample('beta', dist.Normal().expand([L]).to_event(1))
+        
+        cutpoints = {}
+        for h, j in J_u_dict.items():
+            with npr.plate('J_h' + h, j):
+                with npr.handlers.reparam(config={'c_' + h: reparam.TransformReparam()}):
+                    cutpoints[h] = npr.sample('c_' + h, 
+                            dist.TransformedDistribution(
+                                    dist.Dirichlet(jnp.ones([main.H_CUTOFFS[h]+1])),
+                                    dist.transforms.SimplexToOrderedTransform()
+                                    ))
+                    # cutpoints[h] = npr.sample("c_" + h, 
+                    #                           dist.TransformedDistribution(
+                    #                                 dist.Normal().expand([main.H_CUTOFFS[h]]).to_event(1),
+                    #                                 dist.transforms.OrderedTransform()
+                    #                                 ))
+    
+    # sample across 3 firms
+    partialized_f_sample_K = jax.tree_util.Partial(f_sample_K,
+                                cutpoints=cutpoints,
+                                beta=beta,
+                                phi_nn=phi_nn,
+                                N=N,
+                                J_u=J_u,
+                                J_u_dict=J_u_dict,
+                                J_u_idx_start=J_u_idx_start,
+                                J_u_idx_end=J_u_idx_end,
+                                L=L,
+                                T=T,
+                                scale_term=scale_term)
+    
+    # coalesce Y
+    Y_1 = { k:v for (k, v) in zip( main.H_CUTOFFS.keys(), (Y_u_1_11, Y_u_1_10, Y_u_1_5) ) }
+    Y_2 = { k:v for (k, v) in zip( main.H_CUTOFFS.keys(), (Y_u_2_11, Y_u_2_10, Y_u_2_5) ) }
+    Y_3 = { k:v for (k, v) in zip( main.H_CUTOFFS.keys(), (Y_u_3_11, Y_u_3_10, Y_u_3_5) ) }
+
+    # split ideal-points across firms
+    z_1, z_2, z_3 = jnp.split(z, 3, axis=0)
+
+    # run sample statements
+    partialized_f_sample_K(1, Y_1, Y_q_1, z_1)
+    partialized_f_sample_K(2, Y_2, Y_q_2, z_2)
+    partialized_f_sample_K(3, Y_3, Y_q_3, z_3)
+
 
 
 
@@ -505,6 +674,7 @@ def f_sample_K(K: int,
             else:
                 phi = npr.sample('phi_' + str(K), dist.Gamma(1.0, 1.0))
                 
+
     # broadcasting to dim(N,J,T)
     alpha = jnp.repeat(alpha[None,:,:], repeats=N, axis=0)
     betaphi = (1/L) * jnp.repeat(jnp.expand_dims(jnp.square(beta) @ phi, 0), repeats=N, axis=0)

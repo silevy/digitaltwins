@@ -1,7 +1,9 @@
 import argparse
+from .args import get_parser  # Import the parser logic
 import time
 import pickle
 import os
+import csv
 import datetime
 import matplotlib.pyplot as plt
 
@@ -11,55 +13,33 @@ import numpyro as npr
 import numpyro.infer as infer
 from jax import (jit, lax, random)
 import jax.numpy as jnp
+from numpyro.diagnostics import summary
 
 from . import model, inout, post, optim
-
-####################
-# GLOBAL VARIABLES #
-####################
 
 # keys = number of question scale points
 # values = number of cutoffs (one less than scale points)
 H_CUTOFFS = {"11" : 10, "10": 9, "5" : 4}
 
-parser = argparse.ArgumentParser(description='parse args')
-# parser.add_argument('--is-predictive', default=False, type=bool)
-parser.add_argument('--is-predictive', default=False, action=argparse.BooleanOptionalAction)
-parser.add_argument('--method', default='svi', choices=['svi', 'mcmc'], 
-                    help='Select which inference method to use: svi or mcmc (default: svi)'
-)
-parser.add_argument('--seed', default=2, type=int)
-parser.add_argument('--num-epochs', default=5001, type=int)
-parser.add_argument('--epoch-save', default=1000, type=int)
-parser.add_argument('--batch-post', default=5, type=int)
-parser.add_argument('--batch-size', default=32, type=int)
-parser.add_argument('--train-test', default=1024, type=int)
-parser.add_argument('--num-flows', default=6, type=int)
-parser.add_argument('--latent-dims', default=50, type=int)
-parser.add_argument('--hidden-dims', default=512, type=int)
-parser.add_argument('--learning-rate', default=1e-5, type=float)
-parser.add_argument('--decay-rate', default=0.95, type=float)
-
-# For MCMC:
-parser.add_argument('--num-warmup', default=1000, type=int, help='Number of warm-up steps for NUTS')
-parser.add_argument('--num-samples', default=2000, type=int, help='Number of MCMC samples')
-parser.add_argument('--num-chains', default=1, type=int, help='Number of chains (parallel or sequential)')
-parser.add_argument('--mcmc-output', default='mcmc_samples.pkl', type=str,
-                    help='Filename to save MCMC samples (Pickle)')
-
-args = parser.parse_args()
-
 #######
 # RUN #
 #######
 def main():
+
+    parser = get_parser()  # Get the parser
+    args = parser.parse_args()  # Parse the arguments
+
     #initialization
     npr.enable_x64()
     npr.enable_validation()
     rng_key = random.PRNGKey(args.seed)
 
     # target_model = model.model_full
-    target_model = model.model_full
+    if args.method == 'svi':
+        target_model = model.model_full
+    if args.method == 'mcmc':
+        target_model = model.model_mcmc
+    
     target_guide = infer.autoguide.AutoDiagonalNormal(model=target_model,
                                                init_loc_fn=infer.init_to_feasible())
     # target_guide = infer.autoguide.AutoDelta(model.model_full)
@@ -269,10 +249,7 @@ def estimate_mcmc(rng_key, target_model, args):
     # Random seed
     rng_key = random.PRNGKey(args.seed)
 
-    # ----------- 1) Select the model -----------
-    target_model = model.model_full  # or model_noPredictors, etc.
-
-    # ----------- 2) Load Data -----------
+    # ----------- 1) Load Data -----------
     rng_key, rng_data = random.split(rng_key, 2)
     (   J_c, J_u, J_u_dict, J_u_idx_start, J_u_idx_end, Q, T,
         Y_q_1, Y_q_2, Y_q_3,
@@ -344,8 +321,8 @@ def estimate_mcmc(rng_key, target_model, args):
     }
 
     # ----------- 3) Define NUTS / MCMC -----------
-    nuts_kernel = infer.NUTS(target_model)
-    infer.initialization.init_to_median()
+    init_strategy=infer.initialization.init_to_median()
+    nuts_kernel = infer.NUTS(target_model, init_strategy=init_strategy)
     
     mcmc = infer.MCMC(
         nuts_kernel,
@@ -364,13 +341,43 @@ def estimate_mcmc(rng_key, target_model, args):
     print(f"MCMC completed in {t_end - t_start:.2f} seconds.")
 
     # ----------- 5) Extract and save samples -----------
-    samples = mcmc.get_samples(group_by_chain=False)
+    # samples = mcmc.get_samples(group_by_chain=False)
     # If you want chain-by-chain: 
+    samples = mcmc.get_samples(group_by_chain=True)
+
+
+    # Suppose you have something like:
+    # mcmc.run(rng_key, **model_kwargs)
     # samples = mcmc.get_samples(group_by_chain=True)
+    diagnostics = summary(samples)  
+    # diagnostics is a dictionary: {param_name: {"mean": ..., "std": ..., "r_hat": ..., "n_eff": ...}, ...}
+
 
     # 1) Create "mcmc" subfolder if not already present
     mcmc_folder = os.path.join('results', 'mcmc')
     os.makedirs(mcmc_folder, exist_ok=True)
+
+
+    # Construct a path for your CSV file
+    csv_path = os.path.join(mcmc_folder, 'mcmc_diagnostics.csv')
+
+    # We'll assume every parameter has the same keys, e.g., 'mean', 'std', 'n_eff', 'r_hat', etc.
+    # Just gather them from the first parameter's dictionary (or define them explicitly).
+    some_param = next(iter(diagnostics))  # get one param name
+    fieldnames = ['param'] + list(diagnostics[some_param].keys())
+
+    with open(csv_path, 'w', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+
+        for param_name, stats in diagnostics.items():
+            # stats is something like {'mean': 0.5, 'std': 0.2, 'n_eff': 950, 'r_hat': 1.01, ...}
+            row = {'param': param_name}
+            # Merge stats into the row
+            row.update(stats)
+            writer.writerow(row)
+
+    print(f"Saved CSV diagnostics to {csv_path}")
 
     # Optionally, save to a file
     # 2) Save MCMC samples to "mcmc" subfolder

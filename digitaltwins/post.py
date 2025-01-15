@@ -1,6 +1,7 @@
 import os
 import pickle
 import numpy
+import numpyro as npr
 
 from jax import random, numpy as jnp
 from numpyro import infer
@@ -107,11 +108,19 @@ def reconstruct_mcmc(rng_key, model, mcmc_samples, fetch_all_u, fetch_all_c, N_b
     """
 
     # 1) Create a Predictive object using MCMC posterior samples
+    # post_pred_dist = infer.Predictive(
+    #     model=model,
+    #     posterior_samples=mcmc_samples,  # <--- key difference vs SVI
+    #     num_samples=100,                 # how many draws from each chain
+    #     parallel=True
+    # )
+
     post_pred_dist = infer.Predictive(
         model=model,
         posterior_samples=mcmc_samples,  # <--- key difference vs SVI
         num_samples=100,                 # how many draws from each chain
-        parallel=True
+        parallel=True,
+        # batch_ndims=1
     )
 
     # No need to save "params.pkl" for MCMC, unless you want to store
@@ -357,3 +366,49 @@ def post_Y_predictive(rng_key,
     # # save to file #
     for site, tensor in post_samples_dict.items():
         numpy.save(os.path.join(inout.RESULTS_DIR, f"post_samples_{site}.npy"), tensor)
+
+
+
+def main():
+    #initialization
+    npr.enable_x64()
+    npr.enable_validation()
+    rng_key = random.PRNGKey(args.seed)
+
+    # target_model = model.model_full
+    if args.method == 'svi':
+        target_model = model.model_full
+    if args.method == 'mcmc':
+        target_model = model.model_mcmc
+    
+    target_guide = infer.autoguide.AutoDiagonalNormal(model=target_model,
+                                               init_loc_fn=infer.init_to_feasible())
+
+    # load data
+    rng_key, rng_etl = random.split(rng_key, 2)
+    (   J_c, J_u, J_u_dict, J_u_idx_start, J_u_idx_end, Q, T,
+        Y_q_1, Y_q_2, Y_q_3, batch_num_train, batch_num_test,
+        fetch_train, fetch_test, fetch_all_u, fetch_all_c
+    ) = inout.load_dataset(rng_key=rng_etl,
+                           batch_size=args.batch_size, 
+                           N_split=args.train_test)
+    
+    static_kwargs = {   'Y_q_1' : Y_q_1, 
+                        'Y_q_2' : Y_q_2, 
+                        'Y_q_3' : Y_q_3,
+                        'J_u_dict' : J_u_dict, 
+                        'J_u_idx_start' : J_u_idx_start, 
+                        'J_u_idx_end' : J_u_idx_end,
+                        'J_c' : J_c, 'J_u' : J_u, 'Q' : Q, 'T' : T,  
+                        'L' : args.latent_dims, 
+                        'hidden_dim' : args.hidden_dims,
+                        'scale_term' : 1.0 / batch_num_train    }                                               
+
+#########
+## run ##
+#########
+
+
+if __name__ == '__main__':
+    main()
+

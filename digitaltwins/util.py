@@ -1,6 +1,8 @@
 import numpy
 import flax.linen as nn
 from jax import random, numpy as jnp
+import numpyro as npr
+import numpyro.distributions as dist
 
 from . import main
 
@@ -56,7 +58,7 @@ class PhiNN(nn.Module):
     hidden_size1: int
     hidden_size2: int
     output_size: int
-    
+
     def setup(self):
         self.norm_layer = nn.LayerNorm()
         # self.layer1 = nn.Dense(self.hidden_size1, kernel_init=nn.initializers.lecun_normal())
@@ -79,7 +81,7 @@ class IdealPointNN(nn.Module):
     hidden_size1: int
     hidden_size2: int
     output_size: int
-    
+
     def setup(self):
         self.norm_layer = nn.LayerNorm()
         # self.layer1 = nn.Dense(self.hidden_size1, kernel_init=nn.initializers.lecun_normal())
@@ -98,7 +100,8 @@ class IdealPointNN(nn.Module):
         rate = jnp.exp(self.sig_layer(x))
         return concentration, rate
     
-    
+
+
 class PhiLinear(nn.Module):
     output_size: int
 
