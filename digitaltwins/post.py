@@ -2,12 +2,14 @@ import os
 import pickle
 import numpy
 import numpyro as npr
-
+from .args import get_parser # Import the parser logic
 from jax import random, numpy as jnp
 from numpyro import infer
 
 from . import inout
-            
+from . import model, inout, post, optim
+        
+from numpyro.diagnostics import summary
 
 
 def reconstruct(rng_key, model, guide, params, fetch_all_u, fetch_all_c, N_batch, static_kwargs):
@@ -368,8 +370,13 @@ def post_Y_predictive(rng_key,
         numpy.save(os.path.join(inout.RESULTS_DIR, f"post_samples_{site}.npy"), tensor)
 
 
+H_CUTOFFS = {"11" : 10, "10": 9, "5" : 4}
 
 def main():
+
+    parser = get_parser()  # Get the parser
+    args = parser.parse_args()  # Parse the arguments
+
     #initialization
     npr.enable_x64()
     npr.enable_validation()
@@ -402,7 +409,39 @@ def main():
                         'J_c' : J_c, 'J_u' : J_u, 'Q' : Q, 'T' : T,  
                         'L' : args.latent_dims, 
                         'hidden_dim' : args.hidden_dims,
-                        'scale_term' : 1.0 / batch_num_train    }                                               
+                        'scale_term' : 1.0 / batch_num_train    }      
+
+    # 1) Create "mcmc" subfolder if not already present
+    mcmc_folder = os.path.join('results', 'mcmc')
+    os.makedirs(mcmc_folder, exist_ok=True)
+    # Construct a path for your CSV file
+    csv_path = os.path.join(mcmc_folder, 'mcmc_diagnostics.csv')
+
+    # Path to the pickle file you created in main_hmc.py
+    pkl_path = os.path.join(mcmc_folder, 'mcmc_samples.pkl')  
+
+    with open(pkl_path, 'rb') as f:
+        samples = pickle.load(f)
+
+    print("Loaded MCMC samples:", samples.keys())
+
+    # ----------- 6) Optional Posterior Summaries -----------
+    # summary = npr.diagnostics.summary(samples)
+    # print("MCMC Summary:\n", summary)
+
+    # Suppose we want to run the posterior predictive on N_batch of data:
+    rng_key, rng_key_ppc = random.split(rng_key, 2)
+    mae = post.reconstruct_mcmc(
+        rng_key_ppc,
+        model=target_model,
+        mcmc_samples=samples,
+        fetch_all_u=fetch_all_u,
+        fetch_all_c=fetch_all_c,
+        static_kwargs=static_kwargs,
+        N_batch=args.batch_post
+    )
+    print("MAE from MCMC-based posterior predictive:", mae)
+
 
 #########
 ## run ##
