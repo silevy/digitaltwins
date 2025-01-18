@@ -27,7 +27,7 @@ This project implements the novel methodology described in Samuel Levy's researc
 ### `model.py`
 
 
-##### `model_full`
+##### `model_svi`
 
 - **Description**: Implements the core deep generative model that utilizes Bayesian optimization and variational inference to predict customer behavior in counterfactual marketing scenarios.
 - **Main Features**:

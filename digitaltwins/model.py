@@ -56,6 +56,47 @@ def f_sample_K(K: int,
         f_sample_Y(h, N, K, T, y, u, cutpoints, J_u_dict, J_u_idx_start, J_u_idx_end)
 
 
+def f_sample_K_mcmc(K: int,
+               Y_u: dict,
+               Y_q: jnp.ndarray,
+               z: jnp.ndarray,
+               cutpoints: dict,
+               beta: jnp.ndarray,
+               phi_nn: callable,
+               N: int,
+               J_u: int,
+               J_u_dict: dict,
+               J_u_idx_start: dict,
+               J_u_idx_end: dict,
+               L: int,
+               T: int,
+               scale_term: float):
+    
+    # priors, cont.
+    with npr.plate('J_u', J_u):
+        alpha = npr.sample('alpha_' + str(K), dist.Normal().expand([T]).to_event(1))
+    
+    with npr.plate('L', L, dim=-2), npr.plate('T', T, dim=-1):
+        if phi_nn is not None:
+            concen_phi, rate_phi = phi_nn(Y_q)
+            phi = npr.sample('phi_' + str(K), dist.Gamma(concen_phi.T, rate_phi.T))
+        else:
+            phi = npr.sample('phi_' + str(K), dist.Gamma(1.0, 1.0))
+                
+    # broadcasting to dim(N,J,T)
+    alpha = jnp.repeat(alpha[None,:,:], repeats=N, axis=0)
+    betaphi = (1/L) * jnp.repeat(jnp.expand_dims(jnp.square(beta) @ phi, 0), repeats=N, axis=0)
+    z = jnp.repeat(jnp.expand_dims(z, 1), repeats=J_u, axis=1)
+    
+    assert alpha.shape == betaphi.shape and alpha.shape == z.shape
+
+    # likelihood
+    u = alpha + z * betaphi     # dim(N,J,T)
+    for h, y in Y_u.items():
+        f_sample_Y(h, N, K, T, y, u, cutpoints, J_u_dict, J_u_idx_start, J_u_idx_end)
+
+
+
 
 def f_sample_Y(h: str, 
                N:int, 
@@ -85,7 +126,7 @@ def f_sample_Y(h: str,
 # MODELS #
 ##########
 
-def model_full(Y_u_1_11: jnp.ndarray = None,   # uncommon variables, in scale points, dim=(N,J,T) tensor
+def model_svi(Y_u_1_11: jnp.ndarray = None,   # uncommon variables, in scale points, dim=(N,J,T) tensor
                Y_u_1_10: jnp.ndarray = None,
                Y_u_1_5: jnp.ndarray = None,
 
@@ -327,27 +368,26 @@ def model_mcmc(Y_u_1_11: jnp.ndarray = None,   # uncommon variables, in scale po
                                     dist.transforms.AffineTransform(mu_z.squeeze(), sig_z.squeeze())
                                     ))
     
-    with npr.handlers.scale(scale=scale_term):
-        with npr.plate('J_u', J_u):
-            beta = npr.sample('beta', dist.Normal().expand([L]).to_event(1))
-        
-        cutpoints = {}
-        for h, j in J_u_dict.items():
-            with npr.plate('J_h' + h, j):
-                with npr.handlers.reparam(config={'c_' + h: reparam.TransformReparam()}):
-                    cutpoints[h] = npr.sample('c_' + h, 
-                            dist.TransformedDistribution(
-                                    dist.Dirichlet(jnp.ones([main.H_CUTOFFS[h]+1])),
-                                    dist.transforms.SimplexToOrderedTransform()
-                                    ))
-                    # cutpoints[h] = npr.sample("c_" + h, 
-                    #                           dist.TransformedDistribution(
-                    #                                 dist.Normal().expand([main.H_CUTOFFS[h]]).to_event(1),
-                    #                                 dist.transforms.OrderedTransform()
-                    #                                 ))
+    with npr.plate('J_u', J_u):
+        beta = npr.sample('beta', dist.Normal().expand([L]).to_event(1))
+    
+    cutpoints = {}
+    for h, j in J_u_dict.items():
+        with npr.plate('J_h' + h, j):
+            with npr.handlers.reparam(config={'c_' + h: reparam.TransformReparam()}):
+                cutpoints[h] = npr.sample('c_' + h, 
+                        dist.TransformedDistribution(
+                                dist.Dirichlet(jnp.ones([main.H_CUTOFFS[h]+1])),
+                                dist.transforms.SimplexToOrderedTransform()
+                                ))
+                # cutpoints[h] = npr.sample("c_" + h, 
+                #                           dist.TransformedDistribution(
+                #                                 dist.Normal().expand([main.H_CUTOFFS[h]]).to_event(1),
+                #                                 dist.transforms.OrderedTransform()
+                #                                 ))
     
     # sample across 3 firms
-    partialized_f_sample_K = jax.tree_util.Partial(f_sample_K,
+    partialized_f_sample_K = jax.tree_util.Partial(f_sample_K_mcmc,
                                 cutpoints=cutpoints,
                                 beta=beta,
                                 phi_nn=phi_nn,
@@ -374,7 +414,7 @@ def model_mcmc(Y_u_1_11: jnp.ndarray = None,   # uncommon variables, in scale po
     partialized_f_sample_K(3, Y_3, Y_q_3, z_3)
 
 
-
+# The following assume SVI as estimation method
 
 def model_noPredictors(
                Y_u_1_11: jnp.ndarray = None,   # uncommon variables, in scale points, dim=(N,J,T) tensor

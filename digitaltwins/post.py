@@ -382,9 +382,9 @@ def main():
     npr.enable_validation()
     rng_key = random.PRNGKey(args.seed)
 
-    # target_model = model.model_full
+    # target_model = model.model_svi
     if args.method == 'svi':
-        target_model = model.model_full
+        target_model = model.model_svi
     if args.method == 'mcmc':
         target_model = model.model_mcmc
     

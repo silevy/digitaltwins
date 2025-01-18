@@ -34,17 +34,17 @@ def main():
     npr.enable_validation()
     rng_key = random.PRNGKey(args.seed)
 
-    # target_model = model.model_full
+    # target_model = model.model_svi
     if args.method == 'svi':
-        target_model = model.model_full
+        target_model = model.model_svi
         # target_model = model.model_mcmc
     if args.method == 'mcmc':
         target_model = model.model_mcmc
     
     target_guide = infer.autoguide.AutoDiagonalNormal(model=target_model,
                                                init_loc_fn=infer.init_to_feasible())
-    # target_guide = infer.autoguide.AutoDelta(model.model_full)
-    # target_guide = infer.autoguide.AutoIAFNormal(model=model.model_full,
+    # target_guide = infer.autoguide.AutoDelta(model.model_svi)
+    # target_guide = infer.autoguide.AutoIAFNormal(model=model.model_svi,
     #                                       num_flows=args.num_flows,
     #                                       hidden_dims=args.hidden_dims,
     #                                       init_loc_fn=infer.init_to_feasible())
