@@ -37,6 +37,7 @@ def main():
     # target_model = model.model_full
     if args.method == 'svi':
         target_model = model.model_full
+        # target_model = model.model_mcmc
     if args.method == 'mcmc':
         target_model = model.model_mcmc
     
@@ -321,7 +322,7 @@ def estimate_mcmc(rng_key, target_model, args):
     }
 
     # ----------- 3) Define NUTS / MCMC -----------
-    init_strategy=infer.initialization.init_to_median()
+    init_strategy=infer.initialization.init_to_feasible()
     nuts_kernel = infer.NUTS(target_model, init_strategy=init_strategy)
     
     mcmc = infer.MCMC(

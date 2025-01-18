@@ -9,6 +9,78 @@ from jax import numpy as jnp
 
 from . import main, util
 
+
+####################
+# HELPER FUNCTIONS #
+####################
+
+def f_sample_K(K: int,
+               Y_u: dict,
+               Y_q: jnp.ndarray,
+               z: jnp.ndarray,
+               cutpoints: dict,
+               beta: jnp.ndarray,
+               phi_nn: callable,
+               N: int,
+               J_u: int,
+               J_u_dict: dict,
+               J_u_idx_start: dict,
+               J_u_idx_end: dict,
+               L: int,
+               T: int,
+               scale_term: float):
+    
+    # priors, cont.
+    with npr.handlers.scale(scale=scale_term):
+        with npr.plate('J_u', J_u):
+            alpha = npr.sample('alpha_' + str(K), dist.Normal().expand([T]).to_event(1))
+        
+        with npr.plate('L', L, dim=-2), npr.plate('T', T, dim=-1):
+            if phi_nn is not None:
+                concen_phi, rate_phi = phi_nn(Y_q)
+                phi = npr.sample('phi_' + str(K), dist.Gamma(concen_phi.T, rate_phi.T))
+            else:
+                phi = npr.sample('phi_' + str(K), dist.Gamma(1.0, 1.0))
+                
+
+    # broadcasting to dim(N,J,T)
+    alpha = jnp.repeat(alpha[None,:,:], repeats=N, axis=0)
+    betaphi = (1/L) * jnp.repeat(jnp.expand_dims(jnp.square(beta) @ phi, 0), repeats=N, axis=0)
+    z = jnp.repeat(jnp.expand_dims(z, 1), repeats=J_u, axis=1)
+    
+    assert alpha.shape == betaphi.shape and alpha.shape == z.shape
+
+    # likelihood
+    u = alpha + z * betaphi     # dim(N,J,T)
+    for h, y in Y_u.items():
+        f_sample_Y(h, N, K, T, y, u, cutpoints, J_u_dict, J_u_idx_start, J_u_idx_end)
+
+
+
+def f_sample_Y(h: str, 
+               N:int, 
+               K: int, 
+               T: int, 
+               Y_u: jnp.ndarray,
+               Y_u_star: jnp.ndarray, 
+               cutpoints: dict,
+               J_dict: dict, 
+               idx_start: dict, 
+               idx_end: dict):
+    
+    # heterogeneous cutoffs
+    c = cutpoints[h]
+    c = jnp.expand_dims(c, [0,2])
+    
+    with npr.plate('N', N, dim=-3), \
+         npr.plate('J_' + h, J_dict[h], dim=-2), \
+         npr.plate('T', T, dim=-1):
+        
+        npr.sample('Y_u_' + str(K) + '_' + h, 
+                    dist.OrderedLogistic(predictor=Y_u_star[:,idx_start[h]:idx_end[h],:], 
+                                         cutpoints=c),
+                    obs=Y_u)
+        
 ##########
 # MODELS #
 ##########
@@ -642,76 +714,7 @@ def model_linear_homo(
 
 
 
-####################
-# HELPER FUNCTIONS #
-####################
 
-def f_sample_K(K: int,
-               Y_u: dict,
-               Y_q: jnp.ndarray,
-               z: jnp.ndarray,
-               cutpoints: dict,
-               beta: jnp.ndarray,
-               phi_nn: callable,
-               N: int,
-               J_u: int,
-               J_u_dict: dict,
-               J_u_idx_start: dict,
-               J_u_idx_end: dict,
-               L: int,
-               T: int,
-               scale_term: float):
-    
-    # priors, cont.
-    with npr.handlers.scale(scale=scale_term):
-        with npr.plate('J_u', J_u):
-            alpha = npr.sample('alpha_' + str(K), dist.Normal().expand([T]).to_event(1))
-        
-        with npr.plate('L', L, dim=-2), npr.plate('T', T, dim=-1):
-            if phi_nn is not None:
-                concen_phi, rate_phi = phi_nn(Y_q)
-                phi = npr.sample('phi_' + str(K), dist.Gamma(concen_phi.T, rate_phi.T))
-            else:
-                phi = npr.sample('phi_' + str(K), dist.Gamma(1.0, 1.0))
-                
-
-    # broadcasting to dim(N,J,T)
-    alpha = jnp.repeat(alpha[None,:,:], repeats=N, axis=0)
-    betaphi = (1/L) * jnp.repeat(jnp.expand_dims(jnp.square(beta) @ phi, 0), repeats=N, axis=0)
-    z = jnp.repeat(jnp.expand_dims(z, 1), repeats=J_u, axis=1)
-    
-    assert alpha.shape == betaphi.shape and alpha.shape == z.shape
-
-    # likelihood
-    u = alpha + z * betaphi     # dim(N,J,T)
-    for h, y in Y_u.items():
-        f_sample_Y(h, N, K, T, y, u, cutpoints, J_u_dict, J_u_idx_start, J_u_idx_end)
-
-
-
-def f_sample_Y(h: str, 
-               N:int, 
-               K: int, 
-               T: int, 
-               Y_u: jnp.ndarray,
-               Y_u_star: jnp.ndarray, 
-               cutpoints: dict,
-               J_dict: dict, 
-               idx_start: dict, 
-               idx_end: dict):
-    
-    # heterogeneous cutoffs
-    c = cutpoints[h]
-    c = jnp.expand_dims(c, [0,2])
-    
-    with npr.plate('N', N, dim=-3), \
-         npr.plate('J_' + h, J_dict[h], dim=-2), \
-         npr.plate('T', T, dim=-1):
-        
-        npr.sample('Y_u_' + str(K) + '_' + h, 
-                    dist.OrderedLogistic(predictor=Y_u_star[:,idx_start[h]:idx_end[h],:], 
-                                         cutpoints=c),
-                    obs=Y_u)
         
 
 

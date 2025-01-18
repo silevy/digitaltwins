@@ -57,8 +57,8 @@ class PhiNN(nn.Module):
         # x = nn.tanh(self.layer1(x))
         # x = nn.tanh(self.layer2(x))
         x = nn.tanh(self.layer(x))
-        concentration = jnp.exp(self.mu_layer(x))
-        rate = jnp.exp(self.sig_layer(x))
+        concentration = jnp.log1p(jnp.exp(self.sig_layer(x)))
+        rate = jnp.log1p(jnp.exp(self.sig_layer(x)))
         return concentration, rate
 
 class IdealPointNN(nn.Module):
@@ -84,7 +84,7 @@ class IdealPointNN(nn.Module):
         # x = nn.tanh(self.layer3(x))
         x = nn.tanh(self.layer(x))
         concentration = self.mu_layer(x)
-        rate = jnp.exp(self.sig_layer(x))
+        rate = jnp.log1p(jnp.exp(self.sig_layer(x)))
         return concentration, rate
     
 # Function to generate synthetic data

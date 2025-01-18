@@ -53,7 +53,60 @@ from . import main
 #         mu = self.mu_layer(x)
 #         sig = jnp.exp(self.sig_layer(x))
 #         return mu, sig
-        
+
+
+import jax
+import jax.numpy as jnp
+from jax.nn import tanh, softplus
+
+def init_layer_params(input_dim, output_dim, key):
+    """Initialize parameters for a single dense layer."""
+    w_key, b_key = jax.random.split(key)
+    weights = jax.random.normal(w_key, shape=(input_dim, output_dim)) * jnp.sqrt(1 / input_dim)
+    biases = jax.random.normal(b_key, shape=(output_dim,))
+    return weights, biases
+
+def init_ideal_point_nn(input_dim, hidden_dim1, hidden_dim2, output_dim, key):
+    """Initialize all parameters for the IdealPointNN."""
+    keys = jax.random.split(key, num=4)
+    params = {
+        "layer": init_layer_params(input_dim, hidden_dim1, keys[0]),
+        "mu_layer": init_layer_params(hidden_dim1, output_dim, keys[1]),
+        "sig_layer": init_layer_params(hidden_dim1, output_dim, keys[2]),
+        "norm_layer": {
+            "scale": jnp.ones(hidden_dim1),
+            "bias": jnp.zeros(hidden_dim1),
+        },
+    }
+    return params
+
+def layer_norm(x, scale, bias):
+    """Apply layer normalization."""
+    mean = jnp.mean(x, axis=-1, keepdims=True)
+    variance = jnp.mean((x - mean) ** 2, axis=-1, keepdims=True)
+    normalized = (x - mean) / jnp.sqrt(variance + 1e-6)
+    return scale * normalized + bias
+
+def forward_ideal_point_nn(x, params):
+    """Forward pass through the IdealPointNN."""
+    # Layer normalization
+    norm_params = params["norm_layer"]
+    x = layer_norm(x, norm_params["scale"], norm_params["bias"])
+    
+    # Hidden layer
+    w, b = params["layer"]
+    x = tanh(jnp.dot(x, w) + b)
+    
+    # Output layers for concentration and rate
+    mu_w, mu_b = params["mu_layer"]
+    sig_w, sig_b = params["sig_layer"]
+    
+    concentration = jnp.dot(x, mu_w) + mu_b
+    rate = softplus(jnp.dot(x, sig_w) + sig_b)
+    
+    return concentration, rate
+
+
 class PhiNN(nn.Module):
     hidden_size1: int
     hidden_size2: int
@@ -73,8 +126,8 @@ class PhiNN(nn.Module):
         # x = nn.tanh(self.layer1(x))
         # x = nn.tanh(self.layer2(x))
         x = nn.tanh(self.layer(x))
-        concentration = jnp.exp(self.mu_layer(x))
-        rate = jnp.exp(self.sig_layer(x))
+        concentration = jnp.log1p(jnp.exp(self.sig_layer(x)))
+        rate = jnp.log1p(jnp.exp(self.sig_layer(x)))
         return concentration, rate
 
 class IdealPointNN(nn.Module):
@@ -97,7 +150,7 @@ class IdealPointNN(nn.Module):
         # x = nn.tanh(self.layer2(x))
         x = nn.tanh(self.layer(x))
         concentration = self.mu_layer(x)
-        rate = jnp.exp(self.sig_layer(x))
+        rate = jnp.log1p(jnp.exp(self.sig_layer(x)))
         return concentration, rate
     
 
@@ -129,7 +182,7 @@ class IdealPointLinear(nn.Module):
     def __call__(self, x):
         x = self.norm_layer(x)
         mu = self.mu_layer(x)
-        sig = jnp.exp(self.sig_layer(x))
+        sig = jnp.log1p(jnp.exp(self.sig_layer(x)))
         return mu, sig
 
 
