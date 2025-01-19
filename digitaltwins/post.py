@@ -5,11 +5,26 @@ import numpyro as npr
 from .args import get_parser # Import the parser logic
 from jax import random, numpy as jnp
 from numpyro import infer
+from jax import vmap
+from numpyro import handlers
 
 from . import inout
 from . import model, inout, post, optim
         
 from numpyro.diagnostics import summary
+
+# **Function to Display Parameters and Shapes:**
+def display_parameter_shapes(samples):
+    """
+    Prints the keys and shapes of parameters in the given (MCMC) samples.
+
+    Args:
+        mcmc_samples (dict): Dictionary containing (MCMC) samples, with keys as parameter names
+                             and values as sampled arrays.
+    """
+    print("Parameter Shapes:")
+    for key, value in samples.items():
+        print(f"{key}: {value.shape}")
 
 
 def reconstruct(rng_key, model, guide, params, fetch_all_u, fetch_all_c, N_batch, static_kwargs):
@@ -70,6 +85,7 @@ def reconstruct_all(rng_key, model, guide, params, fetch_all_u, fetch_all_c, bat
     Y_u_orig, Y_u_post = {}, {}
         
     batch_num_total = batch_num_train + batch_num_test
+
     for i in range(batch_num_total):
         print(f'{i} out of {batch_num_total}')
         model_args_post = {**fetch_all_c(i), **static_kwargs}
@@ -94,8 +110,29 @@ def reconstruct_all(rng_key, model, guide, params, fetch_all_u, fetch_all_c, bat
     # return mae
 
 
+# # helper function for prediction
+# def predict_mcmc(model, rng_key, samples, Y_u_sites, model_args_post):
+#     model = handlers.substitute(handlers.seed(model, rng_key), samples)
+#     # note that Y will be sampled in the model because we pass Y=None here
+#     model_trace = handlers.trace(model).get_trace(**model_args_post)
+#     return model_trace[Y_u_sites]["value"]
 
-def reconstruct_mcmc(rng_key, model, mcmc_samples, fetch_all_u, fetch_all_c, N_batch, static_kwargs):
+def predict_mcmc(model, rng_key, samples, Y_u_sites, model_args_post):
+    results = []
+    size_post_samples = samples["z"].shape[1]
+    display_parameter_shapes(samples)
+    # Iterate over posterior samples
+    for i in range(samples["z"].shape[1]):  # Assuming shape (1, 100, ...)
+        print(f"{i+1} out of {size_post_samples}")
+        single_sample = {k: v[:, i, ...] for k, v in samples.items()}
+        model_single = handlers.substitute(handlers.seed(model, rng_key), single_sample)
+        trace = handlers.trace(model_single).get_trace(**model_args_post)
+        results.append(trace[Y_u_sites]["value"])
+    return jnp.stack(results, axis=1)  # Combine along sample dimension
+
+
+
+def reconstruct_mcmc(rng_key, model, mcmc_samples, fetch_all_u, fetch_all_c, N_batch, static_kwargs, args):
 
     """
     Generate posterior predictive samples using MCMC draws (mcmc_samples) 
@@ -110,20 +147,13 @@ def reconstruct_mcmc(rng_key, model, mcmc_samples, fetch_all_u, fetch_all_c, N_b
     """
 
     # 1) Create a Predictive object using MCMC posterior samples
-    # post_pred_dist = infer.Predictive(
-    #     model=model,
-    #     posterior_samples=mcmc_samples,  # <--- key difference vs SVI
-    #     num_samples=100,                 # how many draws from each chain
-    #     parallel=True
-    # )
-
     post_pred_dist = infer.Predictive(
         model=model,
         posterior_samples=mcmc_samples,  # <--- key difference vs SVI
         num_samples=100,                 # how many draws from each chain
-        parallel=True,
-        # batch_ndims=1
+        parallel=False,
     )
+
 
     # No need to save "params.pkl" for MCMC, unless you want to store
     # chain draws in a .pkl, but that usually happens in the main script.
@@ -176,8 +206,20 @@ def reconstruct_mcmc(rng_key, model, mcmc_samples, fetch_all_u, fetch_all_c, N_b
     for i in range(N_batch):
         model_args_post = {**fetch_all_c(i), **static_kwargs}
         # posterior predictive draws
-        post_samples = post_pred_dist(rng_key_post, **model_args_post)
 
+        post_samples = post_pred_dist(rng_key_post, **model_args_post)
+            
+        # rng_key, rng_key_predict = random.split(rng_key, 2)
+        # post_samples = predict_mcmc(model, rng_key, mcmc_samples, Y_u_sites, model_args_post)
+        # vmap_args = (
+        #     mcmc_samples,
+        #     random.split(rng_key_predict, args.num_samples * args.num_chains),
+        # )
+        # post_samples = vmap(
+        #     lambda samples, rng_key: predict_mcmc(model, rng_key, samples, Y_u_sites, **model_args_post)
+        # )(*vmap_args)
+        # post_samples = post_samples[..., 0]
+        
         for site in Y_u_sites:
             # store original and predicted
             if site in Y_u_post:
@@ -438,7 +480,8 @@ def main():
         fetch_all_u=fetch_all_u,
         fetch_all_c=fetch_all_c,
         static_kwargs=static_kwargs,
-        N_batch=args.batch_post
+        N_batch=args.batch_post,
+        args=args
     )
     print("MAE from MCMC-based posterior predictive:", mae)
 

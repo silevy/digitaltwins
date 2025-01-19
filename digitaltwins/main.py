@@ -402,8 +402,8 @@ def estimate_mcmc(rng_key, target_model, args):
     # Path to the pickle file you created in main_hmc.py
     pkl_path = os.path.join(mcmc_folder, 'mcmc_samples.pkl')  
 
-    with open(pkl_path, 'rb') as f:
-        samples = pickle.load(f)
+    # with open(pkl_path, 'rb') as f:
+    #     samples = pickle.load(f)
 
     print("Loaded MCMC samples:", samples.keys())
 
@@ -420,7 +420,8 @@ def estimate_mcmc(rng_key, target_model, args):
         fetch_all_u=fetch_all_u,
         fetch_all_c=fetch_all_c,
         static_kwargs=static_kwargs,
-        N_batch=args.batch_post
+        N_batch=args.batch_post,
+        args=args
     )
     print("MAE from MCMC-based posterior predictive:", mae)
 

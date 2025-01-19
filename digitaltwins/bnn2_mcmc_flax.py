@@ -1,22 +1,21 @@
-# NB: this example is ported from https://github.com/ctallec/pyvarinf/blob/master/main_regression.ipynb
-import numpy as np; np.random.seed(0)
-import tqdm
 from flax import linen as nn
-from jax import jit, random
+import jax.numpy as jnp
+import numpy as np; np.random.seed(0)
+from jax import random
 import numpyro
 import numpyro.distributions as dist
 from numpyro.contrib.module import random_flax_module
-from numpyro.infer import Predictive, SVI, TraceMeanField_ELBO, autoguide, init_to_feasible
+from numpyro.infer import MCMC, NUTS, Predictive, init_to_uniform, init_to_feasible, init_to_median
 import os 
 import matplotlib.pyplot as plt
-import jax.numpy as jnp
 
+# Define the neural network using Flax
 class Net(nn.Module):
     n_units: int
 
     @nn.compact
     def __call__(self, x):
-        x = nn.Dense(self.n_units)(x[..., None])
+        x = nn.Dense(self.n_units)(x[..., None])  # Expand dimension for compatibility
         x = nn.relu(x)
         x = nn.Dense(self.n_units)(x)
         x = nn.relu(x)
@@ -24,46 +23,43 @@ class Net(nn.Module):
         rho = nn.Dense(1)(x)
         return mean.squeeze(), rho.squeeze()
 
+# Data generation
 def generate_data(n_samples):
     x = np.random.normal(size=n_samples)
     y = np.cos(x * 3) + np.random.normal(size=n_samples) * np.abs(x) / 2
-    return x, y
+    return x[:, None], y  # Reshape x for compatibility with Flax
 
-def model(x, y=None, batch_size=None):
+# Define the model
+def model(x, y=None):
     module = Net(n_units=32)
-    net = random_flax_module("nn", module, dist.Normal(0, .1), input_shape=())
-    with numpyro.plate("batch", x.shape[0], subsample_size=batch_size):
-        batch_x = numpyro.subsample(x, event_dim=0)
-        batch_y = numpyro.subsample(y, event_dim=0) if y is not None else None
-        mean, rho = net(batch_x)
-        sigma = nn.softplus(rho)
-        numpyro.sample("obs", dist.Normal(mean, sigma), obs=batch_y)
+    net = random_flax_module("nn", module, dist.Normal(0, 0.1), input_shape=(1,))
+    mean, rho = net(x)
+    sigma = jnp.log1p(jnp.exp(rho))  # Softplus for positive scale
+    numpyro.sample("obs", dist.Normal(mean, sigma), obs=y)
 
-n_train_data = 20000
+# MCMC inference
+n_train_data = 5000
 x_train, y_train = generate_data(n_train_data)
-guide = autoguide.AutoNormal(model, init_loc_fn=init_to_feasible)
-svi = SVI(model, guide, numpyro.optim.Adam(5e-3), TraceMeanField_ELBO())
-n_iterations = 10000
-svi_result = svi.run(random.PRNGKey(0), n_iterations, x_train, y_train, batch_size=256)
-params, losses = svi_result.params, svi_result.losses
+
+kernel = NUTS(model, init_strategy=init_to_feasible)
+mcmc = MCMC(kernel, num_warmup=500, num_samples=1000, num_chains=1)
+mcmc.run(random.PRNGKey(0), x_train, y_train)
+
+# Posterior predictions
+posterior_samples = mcmc.get_samples()
 n_test_data = 100
 x_test, y_test = generate_data(n_test_data)
-predictive = Predictive(model, guide=guide, params=params, num_samples=1000)
-y_pred = predictive(random.PRNGKey(1), x_test[:100])["obs"].copy()
-assert losses[-1] < 3000
-assert np.sqrt(np.mean(np.square(y_test - y_pred))) < 1
-
-# Evaluate predictions
-rmse = np.sqrt(np.mean(np.square(y_test - np.mean(y_pred, axis=0))))
-print("Root Mean Squared Error:", rmse)
+predictive = Predictive(model, posterior_samples)
+y_pred = predictive(random.PRNGKey(1), x_test)["obs"]
 
 # Calculate mean and 95% credible intervals
 y_pred_mean = jnp.mean(y_pred, axis=0)
 y_pred_lower = jnp.percentile(y_pred, 2.5, axis=0)
 y_pred_upper = jnp.percentile(y_pred, 97.5, axis=0)
 
-# Plot the results
-os.makedirs("results/mcmc", exist_ok=True)
+# Evaluate predictions
+rmse = np.sqrt(np.mean(np.square(y_test - np.mean(y_pred, axis=0))))
+print("Root Mean Squared Error:", rmse)
 
 # Sort x_test and corresponding predictions
 sorted_indices = jnp.argsort(x_test.squeeze())
@@ -100,8 +96,5 @@ plt.legend()
 plt.grid(alpha=0.3)
 
 # Save the plot
-plt.savefig("results/mcmc/posterior_predictive.png")
+plt.savefig("results/mcmc/posterior_predictive_mcmc_flax.png")
 plt.show()
-
-
-print("Done.")

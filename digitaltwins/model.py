@@ -331,6 +331,12 @@ def model_mcmc(Y_u_1_11: jnp.ndarray = None,   # uncommon variables, in scale po
     #     "sig_layer.bias": dist.Normal(0, 1),
     # }
 
+
+
+
+
+
+
     # Define priors for PhiNN
     phi_nn_prior = dist.Normal(0, 0.1)  # Weights
 
@@ -351,8 +357,54 @@ def model_mcmc(Y_u_1_11: jnp.ndarray = None,   # uncommon variables, in scale po
         util.IdealPointNN(hidden_size1=hidden_dim, hidden_size2=hidden_dim * 2, output_size=1),
         prior=z_nn_prior,
         input_shape=Y_c.shape,
-        # input_shape=()
+        # input_shape=jnp.expand_dims(Y_c, axis=0).shape
     )
+
+    # Define priors for PhiNN
+    # phi_nn_prior = dist.Normal(0, 0.1)  # Weights
+
+    # # Define priors for IdealPointNN
+    # z_nn_prior = dist.Normal(0, 0.1)
+
+    # # Pure JAX definitions for PhiNN and IdealPointNN
+    # phi_nn_params = util.init_ideal_point_nn(
+    #     input_dim=Q,  # Assuming Q is the number of input features
+    #     hidden_dim1=hidden_dim,
+    #     hidden_dim2=hidden_dim * 2,
+    #     output_dim=L,
+    #     key=jax.random.PRNGKey(234),
+    # )
+
+    # z_nn_params = util.init_ideal_point_nn(
+    #     input_dim=Y_c.shape[-1],  # Assuming last dim of Y_c is the input feature size
+    #     hidden_dim1=hidden_dim,
+    #     hidden_dim2=hidden_dim * 2,
+    #     output_dim=1,
+    #     key=jax.random.PRNGKey(567),
+    # )
+
+    # # Forward pass through Bayesian NNs
+    # def phi_nn_forward(x):
+    #     return forward_ideal_point_nn(x, phi_nn_params)
+
+    # def z_nn_forward(x):
+    #     return forward_ideal_point_nn(x, z_nn_params)
+
+    # # Sample Bayesian neural networks
+    # phi_nn = random_flax_module(
+    #     "phi_nn",
+    #     util.PhiNNFlax(params=phi_nn_params), 
+    #     prior=phi_nn_prior,
+    #     input_shape=(T, Q),
+    # )
+
+    # z_nn = random_flax_module(
+    #     "z_nn",
+    #     util.IdealPointNNFlax(params=z_nn_params),
+    #     prior=z_nn_prior,
+    #     input_shape=Y_c.shape,
+    # )
+
 
     ##############################
 

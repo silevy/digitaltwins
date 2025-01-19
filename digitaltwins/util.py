@@ -12,48 +12,6 @@ from . import main
 # AMORTIZING NNs #
 ##################
 
-# class PhiNN(nn.Module):
-#     hidden_size1: int
-#     hidden_size2: int
-#     output_size: int
-    
-#     def setup(self):
-#         self.norm_layer = nn.LayerNorm()
-#         self.layer1 = nn.Dense(self.hidden_size1, kernel_init=nn.initializers.lecun_normal())
-#         self.layer2 = nn.Dense(self.hidden_size2, kernel_init=nn.initializers.lecun_normal())
-#         self.mu_layer = nn.Dense(self.output_size, kernel_init=nn.initializers.lecun_normal())
-#         self.sig_layer = nn.Dense(self.output_size, kernel_init=nn.initializers.lecun_normal())
-
-#     def __call__(self, x):
-#         x = self.norm_layer(x)
-#         x = nn.tanh(self.layer1(x))
-#         x = nn.tanh(self.layer2(x))
-#         concentration = jnp.exp(self.mu_layer(x))
-#         rate = jnp.exp(self.sig_layer(x))
-#         return concentration, rate
-    
-
-
-# class IdealPointNN(nn.Module):
-#     hidden_size1: int
-#     hidden_size2: int
-#     output_size: int
-
-#     def setup(self):
-#         self.norm_layer = nn.LayerNorm()
-#         self.layer1 = nn.Dense(self.hidden_size1, kernel_init=nn.initializers.lecun_normal())
-#         self.layer2 = nn.Dense(self.hidden_size2, kernel_init=nn.initializers.lecun_normal())
-#         self.mu_layer = nn.Dense(self.output_size, kernel_init=nn.initializers.lecun_normal())
-#         self.sig_layer = nn.Dense(self.output_size, kernel_init=nn.initializers.lecun_normal())
-
-#     def __call__(self, x):
-#         x = self.norm_layer(x)
-#         x = nn.tanh(self.layer1(x))
-#         x = nn.tanh(self.layer2(x))
-#         mu = self.mu_layer(x)
-#         sig = jnp.exp(self.sig_layer(x))
-#         return mu, sig
-
 
 import jax
 import jax.numpy as jnp
@@ -63,20 +21,36 @@ def init_layer_params(input_dim, output_dim, key):
     """Initialize parameters for a single dense layer."""
     w_key, b_key = jax.random.split(key)
     weights = jax.random.normal(w_key, shape=(input_dim, output_dim)) * jnp.sqrt(1 / input_dim)
-    biases = jax.random.normal(b_key, shape=(output_dim,))
+    # biases = jax.random.normal(b_key, shape=(output_dim,))
+    biases = jnp.zeros(output_dim)  # Initialize biases to zeros like Flax
     return weights, biases
 
 def init_ideal_point_nn(input_dim, hidden_dim1, hidden_dim2, output_dim, key):
     """Initialize all parameters for the IdealPointNN."""
     keys = jax.random.split(key, num=4)
     params = {
-        "layer": init_layer_params(input_dim, hidden_dim1, keys[0]),
-        "mu_layer": init_layer_params(hidden_dim1, output_dim, keys[1]),
-        "sig_layer": init_layer_params(hidden_dim1, output_dim, keys[2]),
-        "norm_layer": {
-            "scale": jnp.ones(hidden_dim1),
-            "bias": jnp.zeros(hidden_dim1),
-        },
+        "z_layer": init_layer_params(input_dim, hidden_dim1, keys[0]),
+        "z_mu_layer": init_layer_params(hidden_dim1, output_dim, keys[1]),
+        "z_sig_layer": init_layer_params(hidden_dim1, output_dim, keys[2]),
+        # "z_norm_layer": {
+        #     "z_scale": jnp.ones(hidden_dim1),
+        #     "z_bias": jnp.zeros(hidden_dim1),
+        # },
+    }
+    return params
+
+
+def init_ideal_point_nn(input_dim, hidden_dim1, hidden_dim2, output_dim, key):
+    """Initialize all parameters for the IdealPointNN."""
+    keys = jax.random.split(key, num=4)
+    params = {
+        "phi_layer": init_layer_params(input_dim, hidden_dim1, keys[0]),
+        "phi_mu_layer": init_layer_params(hidden_dim1, output_dim, keys[1]),
+        "phi_sig_layer": init_layer_params(hidden_dim1, output_dim, keys[2]),
+        # "phi_norm_layer": {
+        #     "phi_scale": jnp.ones(hidden_dim1),
+        #     "phi_bias": jnp.zeros(hidden_dim1),
+        # },
     }
     return params
 
@@ -90,21 +64,58 @@ def layer_norm(x, scale, bias):
 def forward_ideal_point_nn(x, params):
     """Forward pass through the IdealPointNN."""
     # Layer normalization
-    norm_params = params["norm_layer"]
-    x = layer_norm(x, norm_params["scale"], norm_params["bias"])
+    # norm_params = params["z_norm_layer"]
+    # x = layer_norm(x, norm_params["z_scale"], norm_params["z_bias"])
     
     # Hidden layer
-    w, b = params["layer"]
+    w, b = params["z_layer"]
     x = tanh(jnp.dot(x, w) + b)
     
     # Output layers for concentration and rate
-    mu_w, mu_b = params["mu_layer"]
-    sig_w, sig_b = params["sig_layer"]
+    mu_w, mu_b = params["z_mu_layer"]
+    sig_w, sig_b = params["z_sig_layer"]
     
-    concentration = jnp.dot(x, mu_w) + mu_b
+    mu = jnp.dot(x, mu_w) + mu_b
+    sig = softplus(jnp.dot(x, sig_w) + sig_b)
+    
+    return mu, sig
+
+def forward_phi_nn(x, params):
+    """Forward pass through the IdealPointNN."""
+    # Layer normalization
+    # norm_params = params["phi_norm_layer"]
+    # x = layer_norm(x, norm_params["phi_scale"], norm_params["phi_bias"])
+    
+    # Hidden layer
+    w, b = params["phi_layer"]
+    x = tanh(jnp.dot(x, w) + b)
+    
+    # Output layers for concentration and rate
+    mu_w, mu_b = params["phi_mu_layer"]
+    sig_w, sig_b = params["phi_sig_layer"]
+    
+    concentration = softplus(jnp.dot(x, mu_w) + mu_b)
     rate = softplus(jnp.dot(x, sig_w) + sig_b)
     
     return concentration, rate
+
+
+# class IdealPointNNFlax(nn.Module):
+#     params: dict
+
+#     @nn.compact
+#     def __call__(self, x):
+#         return forward_ideal_point_nn(x, self.params)
+
+# class PhiNNFlax(nn.Module):
+#     params: dict
+
+#     @nn.compact
+#     def __call__(self, x):
+#         return forward_phi_nn(x, self.params)
+
+
+
 
 
 class PhiNN(nn.Module):
@@ -120,13 +131,13 @@ class PhiNN(nn.Module):
         self.mu_layer = nn.Dense(self.output_size, kernel_init=nn.initializers.lecun_normal())
         self.sig_layer = nn.Dense(self.output_size, kernel_init=nn.initializers.lecun_normal())
 
-    @nn.compact
+    # @nn.compact
     def __call__(self, x):
         x = self.norm_layer(x)
         # x = nn.tanh(self.layer1(x))
         # x = nn.tanh(self.layer2(x))
         x = nn.tanh(self.layer(x))
-        concentration = jnp.log1p(jnp.exp(self.sig_layer(x)))
+        concentration = jnp.log1p(jnp.exp(self.mu_layer(x)))
         rate = jnp.log1p(jnp.exp(self.sig_layer(x)))
         return concentration, rate
 
@@ -136,16 +147,19 @@ class IdealPointNN(nn.Module):
     output_size: int
 
     def setup(self):
-        self.norm_layer = nn.LayerNorm()
+        # self.norm_layer = nn.LayerNorm()
+        # self.norm_layer = nn.LayerNorm(feature_axes=-1)  # Normalize last dimension (it's default)
         # self.layer1 = nn.Dense(self.hidden_size1, kernel_init=nn.initializers.lecun_normal())
         # self.layer2 = nn.Dense(self.hidden_size2, kernel_init=nn.initializers.lecun_normal())
         self.layer = nn.Dense(self.hidden_size1, kernel_init=nn.initializers.lecun_normal())
         self.mu_layer = nn.Dense(self.output_size, kernel_init=nn.initializers.lecun_normal())
         self.sig_layer = nn.Dense(self.output_size, kernel_init=nn.initializers.lecun_normal())
 
-    @nn.compact
+    # @nn.compact
     def __call__(self, x):
-        x = self.norm_layer(x)
+        # x = x.reshape(-1, x.shape[-1])  # Flatten all dimensions except the last one
+        # print(f"shape of x: {x.shape}")
+        # x = self.norm_layer(x)
         # x = nn.tanh(self.layer1(x))
         # x = nn.tanh(self.layer2(x))
         x = nn.tanh(self.layer(x))
