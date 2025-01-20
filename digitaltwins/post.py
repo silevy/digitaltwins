@@ -12,9 +12,11 @@ import numpy as np
 import jax
 
 from . import inout
-from . import model, inout, post, optim
+from . import model, inout, post, optim, util
         
 from numpyro.diagnostics import summary
+
+import matplotlib.pyplot as plt
 
 # **Function to Display Parameters and Shapes:**
 def display_parameter_shapes(samples):
@@ -70,48 +72,6 @@ def reconstruct(rng_key, model, guide, params, fetch_all_u, fetch_all_c, N_batch
     return mae
 
 
-def reconstruct_all(rng_key, model, guide, params, fetch_all_u, fetch_all_c, batch_num_train, batch_num_test, static_kwargs):
-    
-    # I/O, parameters
-    with open(os.path.join(inout.RESULTS_DIR, "param.pkl"), 'wb') as f:
-        pickle.dump(params, f)
-
-    post_pred_dist = infer.Predictive(model=model, 
-                                      guide=guide, 
-                                      params=params, 
-                                      num_samples=100,
-                                      parallel=True)
-    
-    # posterior predictive
-    rng_key, rng_key_post = random.split(rng_key, 2)
-    Y_u_sites = list(fetch_all_u(0))
-    Y_u_orig, Y_u_post = {}, {}
-        
-    batch_num_total = batch_num_train + batch_num_test
-
-    for i in range(batch_num_total):
-        print(f'{i} out of {batch_num_total}')
-        model_args_post = {**fetch_all_c(i), **static_kwargs}
-        post_samples = post_pred_dist(rng_key_post, **model_args_post)
-
-        for site in Y_u_sites:
-            if site in Y_u_post:
-                Y_u_orig[site] = jnp.concatenate([Y_u_orig[site], fetch_all_u(i)[site]], axis=0)
-                Y_u_post[site] = jnp.concatenate([Y_u_post[site], post_samples[site]], axis=1)
-            else:
-                Y_u_orig[site] = fetch_all_u(i)[site]
-                Y_u_post[site] = post_samples[site]
-     
-    # f_mae = lambda x : numpy.mean(numpy.abs(x), axis=(0,2))
-    # mae = { site : f_mae(Y_u_orig[site] - Y_u_post[site].mean(axis=0)) for site in Y_u_sites }
-
-    # save to file
-    for site in Y_u_sites:
-        numpy.save(os.path.join(inout.RESULTS_DIR, f"original_{site}.npy"), Y_u_orig[site])
-        numpy.save(os.path.join(inout.RESULTS_DIR, f"post_samples_{site}.npy"), Y_u_post[site])
-        
-    # return mae
-
 
 # # helper function for prediction
 # def predict_mcmc(model, rng_key, samples, Y_u_sites, model_args_post):
@@ -120,20 +80,19 @@ def reconstruct_all(rng_key, model, guide, params, fetch_all_u, fetch_all_c, bat
 #     model_trace = handlers.trace(model).get_trace(**model_args_post)
 #     return model_trace[Y_u_sites]["value"]
 
-def predict_mcmc(model, rng_key, samples, Y_u_sites, model_args_post):
-    results = []
-    size_post_samples = samples["z"].shape[1]
-    display_parameter_shapes(samples)
-    # Iterate over posterior samples
-    for i in range(samples["z"].shape[1]):  # Assuming shape (1, 100, ...)
-        print(f"{i+1} out of {size_post_samples}")
-        single_sample = {k: v[:, i, ...] for k, v in samples.items()}
-        model_single = handlers.substitute(handlers.seed(model, rng_key), single_sample)
-        trace = handlers.trace(model_single).get_trace(**model_args_post)
-        results.append(trace[Y_u_sites]["value"])
-    return jnp.stack(results, axis=1)  # Combine along sample dimension
+# def predict_mcmc(model, rng_key, samples, Y_u_sites, model_args_post):
+#     results = []
+#     size_post_samples = samples["z"].shape[1]
+#     display_parameter_shapes(samples)
+#     # Iterate over posterior samples
+#     for i in range(samples["z"].shape[1]):  # Assuming shape (1, 100, ...)
+#         print(f"{i+1} out of {size_post_samples}")
+#         single_sample = {k: v[:, i, ...] for k, v in samples.items()}
+#         model_single = handlers.substitute(handlers.seed(model, rng_key), single_sample)
+#         trace = handlers.trace(model_single).get_trace(**model_args_post)
+#         results.append(trace[Y_u_sites]["value"])
+#     return jnp.stack(results, axis=1)  # Combine along sample dimension
 
-import jax.numpy as jnp
 
 def remove_first_dim(samples_dict):
     """
@@ -212,19 +171,6 @@ def reconstruct_mcmc(rng_key, model, mcmc_samples, fetch_all_u, fetch_all_c, N_b
         batch_ndims=1
     )
 
-    # model_args_post = {**fetch_all_c(i), **static_kwargs}
-    # # posterior predictive draws
-    # post_samples = post_pred_dist(rng_key_post, **model_args_post)
-
-    # for site in Y_u_sites:
-    #     # store original and predicted
-    #     if site in Y_u_post:
-    #         Y_u_orig[site] = jnp.concatenate([Y_u_orig[site], fetch_all_u(i)[site]], axis=0)
-    #         Y_u_post[site] = jnp.concatenate([Y_u_post[site], post_samples[site]], axis=1)
-    #     else:
-    #         Y_u_orig[site] = fetch_all_u(i)[site]
-    #         Y_u_post[site] = post_samples[site]
-
     # 2) Loop over each data batch
     # for i in range(N_batch):
     i = 0
@@ -240,17 +186,6 @@ def reconstruct_mcmc(rng_key, model, mcmc_samples, fetch_all_u, fetch_all_c, N_b
         for k, v in model_args_gpu.items()
     }
     post_samples = post_pred_dist(rng_key_post, **model_args_cpu)
-        
-    # rng_key, rng_key_predict = random.split(rng_key, 2)
-    # post_samples = predict_mcmc(model, rng_key, mcmc_samples2, Y_u_sites, model_args_post)
-    # vmap_args = (
-    #     mcmc_samples2,
-    #     random.split(rng_key_predict, args.num_samples * args.num_chains),
-    # )
-    # post_samples = vmap(
-    #     lambda samples, rng_key: predict_mcmc(model, rng_key, samples, Y_u_sites, **model_args_post)
-    # )(*vmap_args)
-    # post_samples = post_samples[..., 0]
     
     for site in Y_u_sites:
         # store original and predicted
@@ -272,43 +207,43 @@ def reconstruct_mcmc(rng_key, model, mcmc_samples, fetch_all_u, fetch_all_c, N_b
     return mae
 
 
-def reconstruct_mcmc_all(rng_key, model, mcmc_samples, fetch_all_u, fetch_all_c, batch_num_train, batch_num_test, static_kwargs):
+# def reconstruct_mcmc_all(rng_key, model, mcmc_samples, fetch_all_u, fetch_all_c, batch_num_train, batch_num_test, static_kwargs):
 
-    post_pred_dist = infer.Predictive(
-        model=model,
-        posterior_samples=mcmc_samples,  # <--- key difference vs SVI
-        num_samples=100,                 # how many draws from each chain
-        parallel=True
-    )
+#     post_pred_dist = infer.Predictive(
+#         model=model,
+#         posterior_samples=mcmc_samples,  # <--- key difference vs SVI
+#         num_samples=100,                 # how many draws from each chain
+#         parallel=True
+#     )
     
-    # posterior predictive
-    rng_key, rng_key_post = random.split(rng_key, 2)
-    Y_u_sites = list(fetch_all_u(0))
-    Y_u_orig, Y_u_post = {}, {}
+#     # posterior predictive
+#     rng_key, rng_key_post = random.split(rng_key, 2)
+#     Y_u_sites = list(fetch_all_u(0))
+#     Y_u_orig, Y_u_post = {}, {}
         
-    batch_num_total = batch_num_train + batch_num_test
-    for i in range(batch_num_total):
-        print(f'{i} out of {batch_num_total}')
-        model_args_post = {**fetch_all_c(i), **static_kwargs}
-        post_samples = post_pred_dist(rng_key_post, **model_args_post)
+#     batch_num_total = batch_num_train + batch_num_test
+#     for i in range(batch_num_total):
+#         print(f'{i} out of {batch_num_total}')
+#         model_args_post = {**fetch_all_c(i), **static_kwargs}
+#         post_samples = post_pred_dist(rng_key_post, **model_args_post)
 
-        for site in Y_u_sites:
-            if site in Y_u_post:
-                Y_u_orig[site] = jnp.concatenate([Y_u_orig[site], fetch_all_u(i)[site]], axis=0)
-                Y_u_post[site] = jnp.concatenate([Y_u_post[site], post_samples[site]], axis=1)
-            else:
-                Y_u_orig[site] = fetch_all_u(i)[site]
-                Y_u_post[site] = post_samples[site]
+#         for site in Y_u_sites:
+#             if site in Y_u_post:
+#                 Y_u_orig[site] = jnp.concatenate([Y_u_orig[site], fetch_all_u(i)[site]], axis=0)
+#                 Y_u_post[site] = jnp.concatenate([Y_u_post[site], post_samples[site]], axis=1)
+#             else:
+#                 Y_u_orig[site] = fetch_all_u(i)[site]
+#                 Y_u_post[site] = post_samples[site]
      
-    f_mae = lambda x : numpy.mean(numpy.abs(x), axis=(0,2))
-    mae = { site : f_mae(Y_u_orig[site] - Y_u_post[site].mean(axis=0)) for site in Y_u_sites }
+#     f_mae = lambda x : numpy.mean(numpy.abs(x), axis=(0,2))
+#     mae = { site : f_mae(Y_u_orig[site] - Y_u_post[site].mean(axis=0)) for site in Y_u_sites }
 
-    # save to file
-    for site in Y_u_sites:
-        numpy.save(os.path.join(inout.RESULTS_DIR, f"original_{site}.npy"), Y_u_orig[site])
-        numpy.save(os.path.join(inout.RESULTS_DIR, f"post_samples_{site}.npy"), Y_u_post[site])
+#     # save to file
+#     for site in Y_u_sites:
+#         numpy.save(os.path.join(inout.RESULTS_DIR, f"original_{site}.npy"), Y_u_orig[site])
+#         numpy.save(os.path.join(inout.RESULTS_DIR, f"post_samples_{site}.npy"), Y_u_post[site])
         
-    return mae
+#     return mae
 
 
 
@@ -513,6 +448,65 @@ def save_posterior_summaries(mcmc_samples, output_dir="summaries"):
     print("All parameter summaries saved.")
 
 
+
+
+
+def plot_parameter_estimates(true_params, posterior_means, out_folder="parameter_sim_plots"):
+    """
+    For each common key in true_params and posterior_means, create a scatter plot of:
+        x = true_params[key]
+        y = posterior_means[key]
+    against the 45-degree line. Save plots to out_folder.
+
+    Parameters
+    ----------
+    true_params : dict
+        e.g. {param_name: 1D ndarray of "true" parameter values}
+    posterior_means : dict
+        e.g. {param_name: 1D ndarray of posterior means of the same shape}
+    out_folder : str
+        Folder where all plots are saved.
+    """
+    os.makedirs(out_folder, exist_ok=True)
+
+    # Find the intersection of keys
+    common_keys = set(true_params.keys()).intersection(set(posterior_means.keys()))
+    if not common_keys:
+        print("No common parameter names found between true_params and posterior_means.")
+        return
+
+    for key in sorted(common_keys):
+        # x => true values, y => posterior means
+        x = np.asarray(true_params[key])
+        y = np.asarray(posterior_means[key])
+
+        if x.shape != y.shape:
+            print(f"Warning: shapes differ for key '{key}' (true={x.shape}, post={y.shape}). Skipping.")
+            continue
+
+        plt.figure(figsize=(6, 6))
+        plt.scatter(x, y, alpha=0.7, edgecolors='k', s=40)
+        plt.title(f"Parameter: {key}\nPosterior Mean vs. True")
+
+        # 45-degree line (identity)
+        min_xy = min(x.min(), y.min())
+        max_xy = max(x.max(), y.max())
+        plt.plot([min_xy, max_xy], [min_xy, max_xy], '--r', label='45-degree line')
+
+        plt.xlabel("True Values")
+        plt.ylabel("Posterior Mean")
+        plt.legend(loc='best')
+        plt.tight_layout()
+
+        # Save figure
+        out_path = os.path.join(out_folder, f"{key}_true_vs_posterior_mean.png")
+        plt.savefig(out_path, dpi=150)
+        plt.close()
+
+        print(f"Saved {out_path}")
+
+
+
 H_CUTOFFS = {"11" : 10, "10": 9, "5" : 4}
 
 def main():
@@ -568,10 +562,36 @@ def main():
 
     print("Loaded MCMC samples:", samples.keys())
 
+    # remove the first dimension (chain)
     samples2 = remove_first_dim(samples)
     
+    # save posterior summaries
     save_posterior_summaries(samples2)
     
+    # Load the "true" parameters
+    sim_data_folder = "simulated_data"
+    true_params, true_params_original_shape = util.load_true_params(sim_data_folder)
+    print("True parameters, original shape:")
+    for k, v in true_params_original_shape.items():
+        print(f"{k}: shape={v.shape}")
+    print("True parameters loaded and flattened:")
+    for k, v in true_params.items():
+        print(f"{k}: shape={v.shape}")
+
+    #    Suppose you already have a `samples` dictionary from Numpyro:
+    #    e.g. samples['alpha_1'].shape = (1000,) or (1000, 10, 5) etc.
+    #    We'll flatten them except the first dimension:
+    # samples2 = ...  # from your MCMC or loaded from disk
+    flattened_samples = util.flatten_posterior_samples(samples2)
+    print("Posterior samples, first dimension kept, rest flattened:")
+    for k, v in flattened_samples.items():
+        print(f"{k}: shape={v.shape}")
+
+    # Then you can do something like:
+    posterior_means = {k: v.mean(axis=0) for k, v in flattened_samples.items()}
+    # Compare posterior_means[k] vs. true_params[k] (for matching shapes, etc.)
+
+
     # ----------- 6) Optional Posterior Summaries -----------
     # summary = npr.diagnostics.summary(samples)
     # print("MCMC Summary:\n", summary)

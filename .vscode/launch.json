@@ -29,7 +29,7 @@
         "justMyCode": true,
         "args": [
           "--method=svi",
-          "--epoch-save=10000",
+          "--num-epochs=500",
         ]
       },
       {
@@ -119,10 +119,20 @@
         "args": [
           "--method=mcmc",
           "--seed=42",
-          "--num-warmup=1000",
-          "--num-samples=1000",
-          "--batch-size=1024",
+          "--num-warmup=200",
+          "--num-samples=200",
+          "--batch-size=128",
         ],
+      },
+      {
+        "name": "Debug: digitaltwins.sim",
+        "type": "debugpy",
+        "request": "launch",
+        "module": "digitaltwins.sim",       // <-- run as `python -m digitaltwins.main_hmc`
+        "cwd": "${workspaceFolder}",
+        "console": "integratedTerminal",
+        "justMyCode": true,
+
       },
       {
         "name": "Debug: digitaltwins.bnn3",

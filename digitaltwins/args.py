@@ -25,8 +25,8 @@ def get_parser():
     parser.add_argument("--device", default="cpu", type=str, help='use "cpu" or "gpu".')
 
     # For MCMC:
-    parser.add_argument('--num-warmup', default=1000, type=int, help='Number of warm-up steps for NUTS')
-    parser.add_argument('--num-samples', default=2000, type=int, help='Number of MCMC samples')
+    parser.add_argument('--num-warmup', default=200, type=int, help='Number of warm-up steps for NUTS')
+    parser.add_argument('--num-samples', default=200, type=int, help='Number of MCMC samples')
     parser.add_argument('--num-chains', default=1, type=int, help='Number of chains (parallel or sequential)')
     parser.add_argument('--mcmc-output', default='mcmc_samples.pkl', type=str,
                         help='Filename to save MCMC samples (Pickle)')

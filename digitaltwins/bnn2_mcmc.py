@@ -6,7 +6,7 @@ import jax.numpy as jnp
 import numpyro
 import numpyro.distributions as dist
 from numpyro.contrib.module import random_flax_module
-from numpyro.infer import MCMC, NUTS, Predictive, init_to_uniform, init_to_feasible
+from numpyro.infer import MCMC, NUTS, Predictive, init_to_uniform, init_to_feasible, init_to_sample
 import os 
 import matplotlib.pyplot as plt
 
@@ -32,44 +32,44 @@ def model(X: np.ndarray, Y: np.ndarray, D_H: int, D_Y : int=1):
     # First hidden layer
     w1 = numpyro.sample(
         "w1",
-        dist.Normal(jnp.zeros((D_X, D_H)), 0.1 * jnp.ones((D_X, D_H)))
+        dist.Normal(jnp.zeros((D_X, D_H)), 0.1 * jnp.ones((D_X, D_H))).to_event(2)
     )
     b1 = numpyro.sample(
         "b1",
-        dist.Normal(jnp.zeros((D_H,)), 0.1 * jnp.ones((D_H,)))
+        dist.Normal(jnp.zeros((D_H,)), 0.1 * jnp.ones((D_H,))).to_event(1)
     )
     z1 = nonlin(jnp.matmul(X, w1) + b1)  # shape (N, D_H)
 
     # Second hidden layer
     w2 = numpyro.sample(
         "w2",
-        dist.Normal(jnp.zeros((D_H, D_H)), 0.1 * jnp.ones((D_H, D_H)))
+        dist.Normal(jnp.zeros((D_H, D_H)), 0.1 * jnp.ones((D_H, D_H))).to_event(2)
     )
     b2 = numpyro.sample(
         "b2",
-        dist.Normal(jnp.zeros((D_H,)), 0.1 * jnp.ones((D_H,)))
+        dist.Normal(jnp.zeros((D_H,)), 0.1 * jnp.ones((D_H,))).to_event(1)
     )
     z2 = nonlin(jnp.matmul(z1, w2) + b2)  # shape (N, D_H)
 
     # Final layer for mean
     w_mean = numpyro.sample(
         "w_mean",
-        dist.Normal(jnp.zeros((D_H, D_Y)), 0.1 * jnp.ones((D_H, D_Y)))
+        dist.Normal(jnp.zeros((D_H, D_Y)), 0.1 * jnp.ones((D_H, D_Y))).to_event(2)
     )
     b_mean = numpyro.sample(
         "b_mean",
-        dist.Normal(jnp.zeros((D_Y,)), 0.1 * jnp.ones((D_Y,)))
+        dist.Normal(jnp.zeros((D_Y,)), 0.1 * jnp.ones((D_Y,))).to_event(1)
     )
     mean = jnp.matmul(z2, w_mean) + b_mean  # shape (N, D_Y)
 
     # Final layer for rho
     w_rho = numpyro.sample(
         "w_rho",
-        dist.Normal(jnp.zeros((D_H, D_Y)), 0.1 * jnp.ones((D_H, D_Y)))
+        dist.Normal(jnp.zeros((D_H, D_Y)), 0.1 * jnp.ones((D_H, D_Y))).to_event(2)
     )
     b_rho = numpyro.sample(
         "b_rho",
-        dist.Normal(jnp.zeros((D_Y,)), 0.1 * jnp.ones((D_Y,)))
+        dist.Normal(jnp.zeros((D_Y,)), 0.1 * jnp.ones((D_Y,))).to_event(1)
     )
     rho = jnp.matmul(z2, w_rho) + b_rho  # shape (N, D_Y)
     
@@ -132,9 +132,10 @@ def model(X: np.ndarray, Y: np.ndarray, D_H: int, D_Y : int=1):
 n_train_data = 5000
 x_train, y_train = generate_data(n_train_data)
 
-kernel = NUTS(model=model, init_strategy=init_to_feasible)
+kernel = NUTS(model=model, init_strategy=init_to_sample)
 mcmc = MCMC(kernel, num_warmup=500, num_samples=1000, num_chains=1)
 mcmc.run(random.PRNGKey(0), x_train, np.expand_dims(y_train, axis=1), 32)
+# mcmc.run(random.PRNGKey(0), x_train, y_train, 32)
 
 # Posterior predictions
 posterior_samples = mcmc.get_samples()

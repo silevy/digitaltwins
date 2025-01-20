@@ -45,7 +45,7 @@ def f_sample_K(K: int,
 
     # broadcasting to dim(N,J,T)
     alpha = jnp.repeat(alpha[None,:,:], repeats=N, axis=0)
-    betaphi = (1/L) * jnp.repeat(jnp.expand_dims(jnp.square(beta) @ phi, 0), repeats=N, axis=0)
+    betaphi = (1/L) * jnp.repeat(jnp.expand_dims(beta @ phi, 0), repeats=N, axis=0)
     z = jnp.repeat(jnp.expand_dims(z, 1), repeats=J_u, axis=1)
     
     assert alpha.shape == betaphi.shape and alpha.shape == z.shape
@@ -85,7 +85,7 @@ def f_sample_K_mcmc(K: int,
                 
     # broadcasting to dim(N,J,T)
     alpha = jnp.repeat(alpha[None,:,:], repeats=N, axis=0)
-    betaphi = (1/L) * jnp.repeat(jnp.expand_dims(jnp.square(beta) @ phi, 0), repeats=N, axis=0)
+    betaphi = (1/L) * jnp.repeat(jnp.expand_dims(beta @ phi, 0), repeats=N, axis=0)
     z = jnp.repeat(jnp.expand_dims(z, 1), repeats=J_u, axis=1)
     
     assert alpha.shape == betaphi.shape and alpha.shape == z.shape
@@ -209,7 +209,7 @@ def model_svi(Y_u_1_11: jnp.ndarray = None,   # uncommon variables, in scale poi
     
     with npr.handlers.scale(scale=scale_term):
         with npr.plate('J_u', J_u):
-            beta = npr.sample('beta', dist.Normal().expand([L]).to_event(1))
+            beta = npr.sample('beta', dist.HalfNormal().expand([L]).to_event(1))
         
         cutpoints = {}
         for h, j in J_u_dict.items():
@@ -333,10 +333,10 @@ def model_mcmc(Y_u_1_11: jnp.ndarray = None,   # uncommon variables, in scale po
 
 
     # Define priors for PhiNN
-    phi_nn_prior = dist.Normal(0, 0.1)  # Weights
+    phi_nn_prior = dist.Normal(0, .1)  # Weights
 
     # # Define priors for IdealPointNN
-    z_nn_prior = dist.Normal(0, 0.1)
+    z_nn_prior = dist.Normal(0, .1)
 
     # Sample the Bayesian neural networks
     phi_nn = random_flax_module(
@@ -410,7 +410,7 @@ def model_mcmc(Y_u_1_11: jnp.ndarray = None,   # uncommon variables, in scale po
 
     
     with npr.plate('J_u', J_u):
-        beta = npr.sample('beta', dist.Normal().expand([L]).to_event(1))
+        beta = npr.sample('beta', dist.HalfNormal().expand([L]).to_event(1))
     
     cutpoints = {}
     for h, j in J_u_dict.items():

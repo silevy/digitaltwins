@@ -6,6 +6,7 @@ import argparse
 from .args import get_parser  # Import the parser logic
 import numpy as np
 import pickle 
+from flax.serialization import to_bytes
 
 import jax.numpy as jnp
 from flax import linen as nn
@@ -15,6 +16,8 @@ from numpyro import plate
 from numpyro.infer import Predictive
 from numpyro.distributions import transforms
 from numpyro.infer.reparam import TransformReparam
+from flax.core.frozen_dict import freeze, unfreeze
+from flax.traverse_util import flatten_dict
 
 from jax import random
 
@@ -39,26 +42,64 @@ os.makedirs(RESULTS_DIR, exist_ok=True)
 ## Simulate data ##
 ###################
 
+
+def summarize_params(params_frozen):
+    """
+    Takes a FrozenDict of parameters (as returned by model.init(...))
+    and prints shape, mean, and std for each parameter.
+    """
+    # Convert FrozenDict -> ordinary dict -> flatten nested structure
+    flat = flatten_dict(unfreeze(params_frozen), sep='/')
+    
+    for param_path, value in flat.items():
+        # 'value' is a jax.numpy array
+        shape = value.shape
+        mean = float(value.mean())
+        std = float(value.std())
+        print(f"{param_path}: shape={shape}, mean={mean:.4f}, std={std:.4f}")
+
 class PhiNN(nn.Module):
     hidden_size1: int
     hidden_size2: int
     output_size: int
     
     def setup(self):
-        self.norm_layer = nn.LayerNorm()
+        # self.norm_layer = nn.LayerNorm()
         # self.layer1 = nn.Dense(self.hidden_size1, kernel_init=nn.initializers.lecun_normal())
         # self.layer2 = nn.Dense(self.hidden_size2, kernel_init=nn.initializers.lecun_normal())
-        self.layer = nn.Dense(self.hidden_size1, kernel_init=nn.initializers.lecun_normal())
-        self.mu_layer = nn.Dense(self.output_size, kernel_init=nn.initializers.lecun_normal())
-        self.sig_layer = nn.Dense(self.output_size, kernel_init=nn.initializers.lecun_normal())
+    
+        # self.norm_layer = nn.LayerNorm()
+        # self.layer = nn.Dense(self.hidden_size1, kernel_init=nn.initializers.lecun_normal())
+        # self.mu_layer = nn.Dense(self.output_size, kernel_init=nn.initializers.lecun_normal())
+        # self.sig_layer = nn.Dense(self.output_size, kernel_init=nn.initializers.lecun_normal())
 
+        # Example: random normal biases with std=0.1, random scale ~ Normal(1.0, 0.05)
+        self.norm_layer = nn.LayerNorm(
+            bias_init=nn.initializers.normal(stddev=0.2),
+            scale_init=nn.initializers.normal(stddev=0.2)  # around 0.0 by default, so maybe shift or scale
+        )
+        self.layer = nn.Dense(
+            features=self.hidden_size1,
+            kernel_init=nn.initializers.normal(stddev=.2),
+            bias_init=nn.initializers.normal(stddev=0.1)  # random biases
+        )
+        self.mu_layer = nn.Dense(
+            features=self.output_size,
+            kernel_init=nn.initializers.normal(stddev=.2),
+            bias_init=nn.initializers.normal(stddev=0.1)
+        )
+        self.sig_layer = nn.Dense(
+            features=self.output_size,
+            kernel_init=nn.initializers.normal(stddev=.2),
+            bias_init=nn.initializers.normal(stddev=0.1)
+        )
     @nn.compact
     def __call__(self, x):
         x = self.norm_layer(x)
         # x = nn.tanh(self.layer1(x))
         # x = nn.tanh(self.layer2(x))
         x = nn.tanh(self.layer(x))
-        concentration = jnp.log1p(jnp.exp(self.sig_layer(x)))
+        concentration = jnp.log1p(jnp.exp(self.mu_layer(x)))
         rate = jnp.log1p(jnp.exp(self.sig_layer(x)))
         return concentration, rate
 
@@ -69,13 +110,37 @@ class IdealPointNN(nn.Module):
     output_size: int
     
     def setup(self):
-        self.norm_layer = nn.LayerNorm()
+        # self.norm_layer = nn.LayerNorm()
         # self.layer1 = nn.Dense(self.hidden_size1, kernel_init=nn.initializers.lecun_normal())
         # self.layer2 = nn.Dense(self.hidden_size2, kernel_init=nn.initializers.lecun_normal())
         # self.layer3 = nn.Dense(self.hidden_size3, kernel_init=nn.initializers.lecun_normal())
-        self.layer = nn.Dense(self.hidden_size1, kernel_init=nn.initializers.lecun_normal())
-        self.mu_layer = nn.Dense(self.output_size, kernel_init=nn.initializers.lecun_normal())
-        self.sig_layer = nn.Dense(self.output_size, kernel_init=nn.initializers.lecun_normal())
+
+        # self.norm_layer = nn.LayerNorm()
+        # self.layer = nn.Dense(self.hidden_size1, kernel_init=nn.initializers.lecun_normal())
+        # self.mu_layer = nn.Dense(self.output_size, kernel_init=nn.initializers.lecun_normal())
+        # self.sig_layer = nn.Dense(self.output_size, kernel_init=nn.initializers.lecun_normal())
+
+        # Example: random normal biases with std=0.1, random scale ~ Normal(1.0, 0.05)
+        self.norm_layer = nn.LayerNorm(
+            bias_init=nn.initializers.normal(stddev=.2),
+            scale_init=nn.initializers.normal(stddev=.2)  # around 0.0 by default, so maybe shift or scale
+        )
+        self.layer = nn.Dense(
+            features=self.hidden_size1,
+            kernel_init=nn.initializers.normal(stddev=.2),
+            bias_init=nn.initializers.normal(stddev=0.2)  # random biases
+        )
+        self.mu_layer = nn.Dense(
+            features=self.output_size,
+            kernel_init=nn.initializers.normal(stddev=.2),
+            bias_init=nn.initializers.normal(stddev=.2)
+        )
+        self.sig_layer = nn.Dense(
+            features=self.output_size,
+            kernel_init=nn.initializers.normal(stddev=.2),
+            bias_init=nn.initializers.normal(stddev=0.2)
+        )
+
 
     @nn.compact
     def __call__(self, x):
@@ -103,6 +168,27 @@ def generate_synthetic_data(key, Y_c, hidden_size1=128, hidden_size2=64, hidden_
     key, subkey1, subkey2 = random.split(key, 3)
     model_params_z = z_nn.init(subkey1, dummy_input_z)
     model_params_phi = phi_nn.init(subkey2, dummy_input_phi)
+
+    # After initialization:
+    print("---- z_nn Parameters ----")
+    summarize_params(model_params_z)
+
+    print("\n---- phi_nn Parameters ----")
+    summarize_params(model_params_phi)
+
+    # Save to disk
+    # Ensure the folder exists or create it
+    folder_name = "simulated_data"
+    os.makedirs(folder_name, exist_ok=True)
+
+    with open(os.path.join(folder_name, "z_nn_params.pkl"), "wb") as f:
+        f.write(to_bytes(model_params_z))
+
+    with open(os.path.join(folder_name, "phi_nn_params.pkl"), "wb") as f:
+        f.write(to_bytes(model_params_phi))
+
+    # with open("z_nn_params.pkl", "rb") as f:
+    #     model_params_z_loaded = from_bytes(model_params_z, f.read())
 
     # Get the parameters of the latents from a NN
     mu_z, sig_z = z_nn.apply(model_params_z, Y_c)

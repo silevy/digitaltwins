@@ -6,98 +6,102 @@ import numpyro.distributions as dist
 
 from . import main
 
+import jax
+from jax.nn import tanh, softplus
 
+import os
+import glob
+import pickle
+import numpy as np
+from pathlib import Path
+import re
 
 ##################
 # AMORTIZING NNs #
 ##################
 
 
-import jax
-import jax.numpy as jnp
-from jax.nn import tanh, softplus
+# def init_layer_params(input_dim, output_dim, key):
+#     """Initialize parameters for a single dense layer."""
+#     w_key, b_key = jax.random.split(key)
+#     weights = jax.random.normal(w_key, shape=(input_dim, output_dim)) * jnp.sqrt(1 / input_dim)
+#     # biases = jax.random.normal(b_key, shape=(output_dim,))
+#     biases = jnp.zeros(output_dim)  # Initialize biases to zeros like Flax
+#     return weights, biases
 
-def init_layer_params(input_dim, output_dim, key):
-    """Initialize parameters for a single dense layer."""
-    w_key, b_key = jax.random.split(key)
-    weights = jax.random.normal(w_key, shape=(input_dim, output_dim)) * jnp.sqrt(1 / input_dim)
-    # biases = jax.random.normal(b_key, shape=(output_dim,))
-    biases = jnp.zeros(output_dim)  # Initialize biases to zeros like Flax
-    return weights, biases
-
-def init_ideal_point_nn(input_dim, hidden_dim1, hidden_dim2, output_dim, key):
-    """Initialize all parameters for the IdealPointNN."""
-    keys = jax.random.split(key, num=4)
-    params = {
-        "z_layer": init_layer_params(input_dim, hidden_dim1, keys[0]),
-        "z_mu_layer": init_layer_params(hidden_dim1, output_dim, keys[1]),
-        "z_sig_layer": init_layer_params(hidden_dim1, output_dim, keys[2]),
-        # "z_norm_layer": {
-        #     "z_scale": jnp.ones(hidden_dim1),
-        #     "z_bias": jnp.zeros(hidden_dim1),
-        # },
-    }
-    return params
+# def init_ideal_point_nn(input_dim, hidden_dim1, hidden_dim2, output_dim, key):
+#     """Initialize all parameters for the IdealPointNN."""
+#     keys = jax.random.split(key, num=4)
+#     params = {
+#         "z_layer": init_layer_params(input_dim, hidden_dim1, keys[0]),
+#         "z_mu_layer": init_layer_params(hidden_dim1, output_dim, keys[1]),
+#         "z_sig_layer": init_layer_params(hidden_dim1, output_dim, keys[2]),
+#         # "z_norm_layer": {
+#         #     "z_scale": jnp.ones(hidden_dim1),
+#         #     "z_bias": jnp.zeros(hidden_dim1),
+#         # },
+#     }
+#     return params
 
 
-def init_ideal_point_nn(input_dim, hidden_dim1, hidden_dim2, output_dim, key):
-    """Initialize all parameters for the IdealPointNN."""
-    keys = jax.random.split(key, num=4)
-    params = {
-        "phi_layer": init_layer_params(input_dim, hidden_dim1, keys[0]),
-        "phi_mu_layer": init_layer_params(hidden_dim1, output_dim, keys[1]),
-        "phi_sig_layer": init_layer_params(hidden_dim1, output_dim, keys[2]),
-        # "phi_norm_layer": {
-        #     "phi_scale": jnp.ones(hidden_dim1),
-        #     "phi_bias": jnp.zeros(hidden_dim1),
-        # },
-    }
-    return params
+# def init_ideal_point_nn(input_dim, hidden_dim1, hidden_dim2, output_dim, key):
+#     """Initialize all parameters for the IdealPointNN."""
+#     keys = jax.random.split(key, num=4)
+#     params = {
+#         "phi_layer": init_layer_params(input_dim, hidden_dim1, keys[0]),
+#         "phi_mu_layer": init_layer_params(hidden_dim1, output_dim, keys[1]),
+#         "phi_sig_layer": init_layer_params(hidden_dim1, output_dim, keys[2]),
+#         # "phi_norm_layer": {
+#         #     "phi_scale": jnp.ones(hidden_dim1),
+#         #     "phi_bias": jnp.zeros(hidden_dim1),
+#         # },
+#     }
+#     return params
 
-def layer_norm(x, scale, bias):
-    """Apply layer normalization."""
-    mean = jnp.mean(x, axis=-1, keepdims=True)
-    variance = jnp.mean((x - mean) ** 2, axis=-1, keepdims=True)
-    normalized = (x - mean) / jnp.sqrt(variance + 1e-6)
-    return scale * normalized + bias
+# def layer_norm(x, scale, bias):
+#     """Apply layer normalization."""
+#     mean = jnp.mean(x, axis=-1, keepdims=True)
+#     variance = jnp.mean((x - mean) ** 2, axis=-1, keepdims=True)
+#     normalized = (x - mean) / jnp.sqrt(variance + 1e-6)
+#     return scale * normalized + bias
 
-def forward_ideal_point_nn(x, params):
-    """Forward pass through the IdealPointNN."""
-    # Layer normalization
-    # norm_params = params["z_norm_layer"]
-    # x = layer_norm(x, norm_params["z_scale"], norm_params["z_bias"])
+# def forward_ideal_point_nn(x, params):
+#     """Forward pass through the IdealPointNN."""
+#     # Layer normalization
+#     # norm_params = params["z_norm_layer"]
+#     # x = layer_norm(x, norm_params["z_scale"], norm_params["z_bias"])
     
-    # Hidden layer
-    w, b = params["z_layer"]
-    x = tanh(jnp.dot(x, w) + b)
+#     # Hidden layer
+#     w, b = params["z_layer"]
+#     x = tanh(jnp.dot(x, w) + b)
     
-    # Output layers for concentration and rate
-    mu_w, mu_b = params["z_mu_layer"]
-    sig_w, sig_b = params["z_sig_layer"]
+#     # Output layers for concentration and rate
+#     mu_w, mu_b = params["z_mu_layer"]
+#     sig_w, sig_b = params["z_sig_layer"]
     
-    mu = jnp.dot(x, mu_w) + mu_b
-    sig = softplus(jnp.dot(x, sig_w) + sig_b)
+#     mu = jnp.dot(x, mu_w) + mu_b
+#     sig = softplus(jnp.dot(x, sig_w) + sig_b)
     
-    return mu, sig
+#     return mu, sig
 
-def forward_phi_nn(x, params):
-    """Forward pass through the IdealPointNN."""
-    # Layer normalization
-    # norm_params = params["phi_norm_layer"]
-    # x = layer_norm(x, norm_params["phi_scale"], norm_params["phi_bias"])
+# def forward_phi_nn(x, params):
+#     """Forward pass through the IdealPointNN."""
+#     # Layer normalization
+#     # norm_params = params["phi_norm_layer"]
+#     # x = layer_norm(x, norm_params["phi_scale"], norm_params["phi_bias"])
     
-    # Hidden layer
-    w, b = params["phi_layer"]
-    x = tanh(jnp.dot(x, w) + b)
+#     # Hidden layer
+#     w, b = params["phi_layer"]
+#     x = tanh(jnp.dot(x, w) + b)
     
-    # Output layers for concentration and rate
-    mu_w, mu_b = params["phi_mu_layer"]
-    sig_w, sig_b = params["phi_sig_layer"]
+#     # Output layers for concentration and rate
+#     mu_w, mu_b = params["phi_mu_layer"]
+#     sig_w, sig_b = params["phi_sig_layer"]
     
-    concentration = softplus(jnp.dot(x, mu_w) + mu_b)
-    rate = softplus(jnp.dot(x, sig_w) + sig_b)
+#     concentration = softplus(jnp.dot(x, mu_w) + mu_b)
+#     rate = softplus(jnp.dot(x, sig_w) + sig_b)
     
-    return concentration, rate
+#     return concentration, rate
 
 
 # class IdealPointNNFlax(nn.Module):
@@ -185,21 +189,20 @@ class IdealPointNN_mcmc(nn.Module):
         # x = x.reshape(-1, x.shape[-1])  # Flatten all dimensions except the last one
         # print(f"shape of x: {x.shape}")
         # x = self.norm_layer(x)
-        # x = self.norm_layer(x)
-
-
+        x = self.norm_layer(x)
 
         # Suppose x can be (N, 354) or (S, N, 354)
         # Flatten all leading dims into one combined batch:
-        orig_shape = x.shape
-        x = x.reshape(-1, orig_shape[-1])  # e.g. (N, 354) or (S*N, 354)
+        # orig_shape = x.shape
+        # x = x.reshape(-1, orig_shape[-1])  # e.g. (N, 354) or (S*N, 354)
 
-        x = self.norm_layer(x)
+        # x = self.norm_layer(x)
 
-        # optional: for a standard feed-forward net, you might keep it flat, or reshape back
-        x = x.reshape(orig_shape[:-1] + (-1,))
+        # # optional: for a standard feed-forward net, you might keep it flat, or reshape back
+        # x = x.reshape(orig_shape[:-1] + (-1,))
         # x = nn.tanh(self.layer1(x))
         # x = nn.tanh(self.layer2(x))
+
         x = nn.tanh(self.layer(x))
         concentration = self.mu_layer(x)
         rate = jnp.log1p(jnp.exp(self.sig_layer(x)))
@@ -265,6 +268,70 @@ class IdealPointLinear(nn.Module):
 
 
 
+def load_true_params(simulated_data_folder: str):
+    """
+    Loads all .npy files that start with alpha, beta, c, phi, u, or z,
+    plus z_nn_params.pkl and phi_nn_params.pkl.
+    Returns a dict of {param_name -> flattened 1D array}.
+    """
+    folder = Path(simulated_data_folder)
+    true_params = {}
+    true_params_original_shape = {}
+    # 1. Load .npy files matching your patterns
+    # pattern = os.path.join(simulated_data_folder, "{alpha,beta,c,phi,u,z}*.npy")
+    # # Note: On some shells, you might need to expand manually or do multiple patterns.
+    # # Alternatively, just load all .npy and then filter by name:
+    # # pattern = "*.npy"
+    # npy_files = glob.glob(pattern, recursive=False)
+
+    all_npy_files = glob.glob(os.path.join(simulated_data_folder, "*.npy"))
+    filter_prefix = re.compile(r"^(alpha|beta|c|phi|u|z)")
+    npy_files = [f for f in all_npy_files if filter_prefix.match(os.path.basename(f))]
+
+
+    for fpath in npy_files:
+        f = Path(fpath)
+        param_name = f.stem  # e.g. 'alpha_1' if file is alpha_1.npy
+        arr = np.load(fpath)
+        # Flatten to 1D
+        true_params[param_name] = arr.ravel()
+        true_params_original_shape[param_name] = arr
+
+    # 2. Load any relevant .pkl files (z_nn_params.pkl, phi_nn_params.pkl)
+    #    If these contain arrays, flatten them as well.
+    # pkl_files = ["z_nn_params.pkl", "phi_nn_params.pkl"]
+    # for pkl_file in pkl_files:
+    #     pkl_path = folder / pkl_file
+    #     if pkl_path.exists():
+    #         with open(pkl_path, "rb") as fp:
+    #             params_dict = pickle.load(fp)
+    #         # Suppose params_dict is {name -> array}, flatten each
+    #         for k, v in params_dict.items():
+    #             # We'll store them with a prefix or simply rename
+    #             # E.g. "z_nn_params__k" or just k
+    #             new_key = f"{pkl_file}::{k}"
+    #             true_params[new_key] = np.asarray(v).ravel()
+
+    return true_params, true_params_original_shape
+
+
+def flatten_posterior_samples(samples: dict):
+    """
+    Given a dict of {param_name -> np.array} where each array
+    has shape (num_draws, ...), flatten all but the first dimension.
+    So (1000, 32, 50) -> (1000, 1600).
+    Returns a dict of {param_name -> flattened array}.
+    """
+    flattened = {}
+    for param_name, arr in samples.items():
+        # arr.shape = (num_draws, dim1, dim2, ...)
+        # Flatten everything except the leading dimension:
+        num_draws = arr.shape[0]
+        # reshape to (num_draws, -1)
+        new_shape = (num_draws, -1)
+        flattened[param_name] = arr.reshape(new_shape)
+    return flattened
+
 def simulated_data(rng_key, svi_object, N=10000, J=65, L=25, T=20):
     # simulated data
     rng_key, rng_key_sim = random.split(rng_key, 2)
@@ -305,3 +372,4 @@ def simulated_data(rng_key, svi_object, N=10000, J=65, L=25, T=20):
                                 J_idx_start = J_idx_start,
                                 J_idx_end = J_idx_end
                                 )
+                                

@@ -212,7 +212,9 @@ def estimate_svi(rng_key, target_model, target_guide, args):
     
     rng_key, rng_key_recon_all = random.split(rng_key, 2)
 
-    post.reconstruct_all(rng_key_recon_all, target_model, target_guide, params, 
+    # #print
+    param_post = svi.get_params(svi_state)
+    post.reconstruct_all_no_loop(rng_key_recon_all, target_model, target_guide, param_post, 
                                    fetch_all_u, fetch_all_c, batch_num_train, batch_num_test, static_kwargs)
 
     # Plotting the loss history
@@ -228,8 +230,7 @@ def estimate_svi(rng_key, target_model, target_guide, args):
     plt.savefig(os.path.join('fit_results', plottitle))  # Save the figure as PDF
     plt.close()
 
-    # #print
-    param_post = svi.get_params(svi_state)
+
     print("AutoGuide - locations: ")
     print(param_post['auto_loc'])
     print("AutoGuide - scales: ")
@@ -322,7 +323,7 @@ def estimate_mcmc(rng_key, target_model, args):
     }
 
     # ----------- 3) Define NUTS / MCMC -----------
-    init_strategy=infer.initialization.init_to_mean()
+    init_strategy=infer.initialization.init_to_sample()
     nuts_kernel = infer.NUTS(target_model, init_strategy=init_strategy)
     # nuts_kernel = infer.NUTS(target_model)
     
