@@ -141,6 +141,58 @@ class PhiNN(nn.Module):
         rate = jnp.log1p(jnp.exp(self.sig_layer(x)))
         return concentration, rate
 
+class PhiNN_mcmc(nn.Module):
+    hidden_size1: int
+    hidden_size2: int
+    output_size: int
+
+    def setup(self):
+        self.norm_layer = nn.LayerNorm()
+        # self.layer1 = nn.Dense(self.hidden_size1, kernel_init=nn.initializers.lecun_normal())
+        # self.layer2 = nn.Dense(self.hidden_size2, kernel_init=nn.initializers.lecun_normal())
+        self.layer = nn.Dense(self.hidden_size1, kernel_init=nn.initializers.lecun_normal())
+        self.mu_layer = nn.Dense(self.output_size, kernel_init=nn.initializers.lecun_normal())
+        self.sig_layer = nn.Dense(self.output_size, kernel_init=nn.initializers.lecun_normal())
+
+    # @nn.compact
+    def __call__(self, x):
+        # x = self.norm_layer(x[...,None])
+        x = self.norm_layer(x)
+        # x = nn.tanh(self.layer1(x))
+        # x = nn.tanh(self.layer2(x))
+        x = nn.tanh(self.layer(x))
+        concentration = jnp.log1p(jnp.exp(self.mu_layer(x)))
+        rate = jnp.log1p(jnp.exp(self.sig_layer(x)))
+        return concentration, rate
+
+
+class IdealPointNN_mcmc(nn.Module):
+    hidden_size1: int
+    hidden_size2: int
+    output_size: int
+
+    def setup(self):
+        self.norm_layer = nn.LayerNorm()
+        # self.norm_layer = nn.LayerNorm(feature_axes=-1)  # Normalize last dimension (it's default)
+        # self.layer1 = nn.Dense(self.hidden_size1, kernel_init=nn.initializers.lecun_normal())
+        # self.layer2 = nn.Dense(self.hidden_size2, kernel_init=nn.initializers.lecun_normal())
+        self.layer = nn.Dense(self.hidden_size1, kernel_init=nn.initializers.lecun_normal())
+        self.mu_layer = nn.Dense(self.output_size, kernel_init=nn.initializers.lecun_normal())
+        self.sig_layer = nn.Dense(self.output_size, kernel_init=nn.initializers.lecun_normal())
+
+    # @nn.compact
+    def __call__(self, x):
+        # x = x.reshape(-1, x.shape[-1])  # Flatten all dimensions except the last one
+        # print(f"shape of x: {x.shape}")
+        x = self.norm_layer(x)
+        # x = self.norm_layer(x[...,None])
+        # x = nn.tanh(self.layer1(x))
+        # x = nn.tanh(self.layer2(x))
+        x = nn.tanh(self.layer(x))
+        concentration = self.mu_layer(x)
+        rate = jnp.log1p(jnp.exp(self.sig_layer(x)))
+        return concentration, rate
+
 class IdealPointNN(nn.Module):
     hidden_size1: int
     hidden_size2: int

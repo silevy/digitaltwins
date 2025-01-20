@@ -322,8 +322,9 @@ def estimate_mcmc(rng_key, target_model, args):
     }
 
     # ----------- 3) Define NUTS / MCMC -----------
-    init_strategy=infer.initialization.init_to_feasible()
+    init_strategy=infer.initialization.init_to_mean()
     nuts_kernel = infer.NUTS(target_model, init_strategy=init_strategy)
+    # nuts_kernel = infer.NUTS(target_model)
     
     mcmc = infer.MCMC(
         nuts_kernel,

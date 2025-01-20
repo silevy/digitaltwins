@@ -346,7 +346,7 @@ def model_mcmc(Y_u_1_11: jnp.ndarray = None,   # uncommon variables, in scale po
     # Sample the Bayesian neural networks
     phi_nn = random_flax_module(
         "phi_nn",
-        util.PhiNN(hidden_size1=hidden_dim, hidden_size2=hidden_dim * 2, output_size=L),
+        util.PhiNN_mcmc(hidden_size1=hidden_dim, hidden_size2=hidden_dim * 2, output_size=L),
         prior=phi_nn_prior,
         input_shape=(T, Q),
         # input_shape=(),
@@ -354,7 +354,7 @@ def model_mcmc(Y_u_1_11: jnp.ndarray = None,   # uncommon variables, in scale po
 
     z_nn = random_flax_module(
         "z_nn",
-        util.IdealPointNN(hidden_size1=hidden_dim, hidden_size2=hidden_dim * 2, output_size=1),
+        util.IdealPointNN_mcmc(hidden_size1=hidden_dim, hidden_size2=hidden_dim * 2, output_size=1),
         prior=z_nn_prior,
         input_shape=Y_c.shape,
         # input_shape=jnp.expand_dims(Y_c, axis=0).shape
@@ -413,12 +413,6 @@ def model_mcmc(Y_u_1_11: jnp.ndarray = None,   # uncommon variables, in scale po
     mu_z, sig_z = z_nn(Y_c)  # For IdealPointNN
 
 
-    with npr.plate('N_total', N*3, dim=-2), npr.plate('T', T, dim=-1):
-        with npr.handlers.reparam(config={'z': reparam.TransformReparam()}):
-            z = npr.sample('z', dist.TransformedDistribution(
-                                    dist.Normal(),
-                                    dist.transforms.AffineTransform(mu_z.squeeze(), sig_z.squeeze())
-                                    ))
     
     with npr.plate('J_u', J_u):
         beta = npr.sample('beta', dist.Normal().expand([L]).to_event(1))
@@ -457,6 +451,14 @@ def model_mcmc(Y_u_1_11: jnp.ndarray = None,   # uncommon variables, in scale po
     Y_2 = { k:v for (k, v) in zip( main.H_CUTOFFS.keys(), (Y_u_2_11, Y_u_2_10, Y_u_2_5) ) }
     Y_3 = { k:v for (k, v) in zip( main.H_CUTOFFS.keys(), (Y_u_3_11, Y_u_3_10, Y_u_3_5) ) }
 
+
+    with npr.plate('N_total', N*3, dim=-2), npr.plate('T', T, dim=-1):
+        with npr.handlers.reparam(config={'z': reparam.TransformReparam()}):
+            z = npr.sample('z', dist.TransformedDistribution(
+                                    dist.Normal(),
+                                    dist.transforms.AffineTransform(mu_z.squeeze(), sig_z.squeeze())
+                                    ))
+                                    
     # split ideal-points across firms
     z_1, z_2, z_3 = jnp.split(z, 3, axis=0)
 
