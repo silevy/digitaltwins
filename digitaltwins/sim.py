@@ -3,6 +3,7 @@ import inspect
 import pandas as pd
 import jax
 import argparse
+from .args import get_parser  # Import the parser logic
 import numpy as np
 import pickle 
 
@@ -26,13 +27,13 @@ DATA_DIR = os.path.join(HOME_PATH, 'data')
 RESULTS_DIR = os.path.join('results')
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
-parser = argparse.ArgumentParser(description='parse args')
-# parser.add_argument('--is-predictive', default=False, type=bool)
-parser.add_argument('--seed', default=2, type=int)
-parser.add_argument('--train-test', default=512, type=int)
-parser.add_argument('--latent-dims', default=50, type=int)
-parser.add_argument('--hidden-dims', default=512, type=int)
-args = parser.parse_args()
+# parser = argparse.ArgumentParser(description='parse args')
+# # parser.add_argument('--is-predictive', default=False, type=bool)
+# parser.add_argument('--seed', default=2, type=int)
+# parser.add_argument('--train-test', default=512, type=int)
+# parser.add_argument('--latent-dims', default=50, type=int)
+# parser.add_argument('--hidden-dims', default=512, type=int)
+# args = parser.parse_args()
 
 ###################
 ## Simulate data ##
@@ -358,6 +359,9 @@ def reshape_first_n(arrays_dict, n):
 
     
 def main():
+
+    parser = get_parser()  # Get the parser
+    args = parser.parse_args()  # Parse the arguments
 
     key = random.PRNGKey(0) # initial key for pseudorandom number generator
     K, T = 3, 10 # no of competitors, no of time periods (quarters), 

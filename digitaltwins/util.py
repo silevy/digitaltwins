@@ -184,8 +184,8 @@ class IdealPointNN_mcmc(nn.Module):
     def __call__(self, x):
         # x = x.reshape(-1, x.shape[-1])  # Flatten all dimensions except the last one
         # print(f"shape of x: {x.shape}")
+        # x = self.norm_layer(x)
         x = self.norm_layer(x)
-        # x = self.norm_layer(x[...,None])
         # x = nn.tanh(self.layer1(x))
         # x = nn.tanh(self.layer2(x))
         x = nn.tanh(self.layer(x))

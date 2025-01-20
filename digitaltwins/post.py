@@ -146,13 +146,6 @@ def reconstruct_mcmc(rng_key, model, mcmc_samples, fetch_all_u, fetch_all_c, N_b
         static_kwargs: dictionary of additional data needed for model
     """
 
-    # 1) Create a Predictive object using MCMC posterior samples
-    post_pred_dist = infer.Predictive(
-        model=model,
-        posterior_samples=mcmc_samples,  # <--- key difference vs SVI
-        num_samples=100,                 # how many draws from each chain
-        parallel=False,
-    )
 
 
     # No need to save "params.pkl" for MCMC, unless you want to store
@@ -188,6 +181,15 @@ def reconstruct_mcmc(rng_key, model, mcmc_samples, fetch_all_u, fetch_all_c, N_b
     Y_u_sites = list(fetch_all_u(0))
     Y_u_orig, Y_u_post = {}, {}
     
+    # 1) Create a Predictive object using MCMC posterior samples
+    post_pred_dist = infer.Predictive(
+        model=model,
+        posterior_samples=mcmc_samples,  # <--- key difference vs SVI
+        # num_samples=100,                 # how many draws from each chain
+        parallel=True,
+        return_sites=Y_u_sites
+        # batch_ndims=2
+    )
 
     # model_args_post = {**fetch_all_c(i), **static_kwargs}
     # # posterior predictive draws
@@ -473,6 +475,7 @@ def main():
 
     # Suppose we want to run the posterior predictive on N_batch of data:
     rng_key, rng_key_ppc = random.split(rng_key, 2)
+    post.display_parameter_shapes(samples)
     mae = post.reconstruct_mcmc(
         rng_key_ppc,
         model=target_model,

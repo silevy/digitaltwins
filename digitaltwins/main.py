@@ -313,7 +313,7 @@ def estimate_mcmc(rng_key, target_model, args):
         'Q': Q,
         'T': T,
         'L': 50,               # default latent_dims
-        'hidden_dim': 512,     # default hidden_dims
+        'hidden_dim': args.hidden_dims,     # default hidden_dims
         'scale_term': 1.0 / batch_num_train,
         # ... if the model expects Y_q_1, Y_q_2, Y_q_3:
         'Y_q_1': Y_q_1,
@@ -414,6 +414,7 @@ def estimate_mcmc(rng_key, target_model, args):
 
     # Suppose we want to run the posterior predictive on N_batch of data:
     rng_key, rng_key_ppc = random.split(rng_key, 2)
+    post.display_parameter_shapes(samples)
     mae = post.reconstruct_mcmc(
         rng_key_ppc,
         model=target_model,

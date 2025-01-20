@@ -332,11 +332,6 @@ def model_mcmc(Y_u_1_11: jnp.ndarray = None,   # uncommon variables, in scale po
     # }
 
 
-
-
-
-
-
     # Define priors for PhiNN
     phi_nn_prior = dist.Normal(0, 0.1)  # Weights
 

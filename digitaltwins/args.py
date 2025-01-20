@@ -19,7 +19,7 @@ def get_parser():
     parser.add_argument('--train-test', default=1024, type=int)
     parser.add_argument('--num-flows', default=6, type=int)
     parser.add_argument('--latent-dims', default=50, type=int)
-    parser.add_argument('--hidden-dims', default=512, type=int)
+    parser.add_argument('--hidden-dims', default=32, type=int)
     parser.add_argument('--learning-rate', default=1e-5, type=float)
     parser.add_argument('--decay-rate', default=0.95, type=float)
 
