@@ -22,6 +22,7 @@ def get_parser():
     parser.add_argument('--hidden-dims', default=32, type=int)
     parser.add_argument('--learning-rate', default=1e-5, type=float)
     parser.add_argument('--decay-rate', default=0.95, type=float)
+    parser.add_argument("--device", default="cpu", type=str, help='use "cpu" or "gpu".')
 
     # For MCMC:
     parser.add_argument('--num-warmup', default=1000, type=int, help='Number of warm-up steps for NUTS')

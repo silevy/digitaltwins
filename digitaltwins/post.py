@@ -7,6 +7,9 @@ from jax import random, numpy as jnp
 from numpyro import infer
 from jax import vmap
 from numpyro import handlers
+import pandas as pd
+import numpy as np
+import jax
 
 from . import inout
 from . import model, inout, post, optim
@@ -225,10 +228,18 @@ def reconstruct_mcmc(rng_key, model, mcmc_samples, fetch_all_u, fetch_all_c, N_b
     # 2) Loop over each data batch
     # for i in range(N_batch):
     i = 0
-    model_args_post = {**fetch_all_c(i), **static_kwargs}
+    model_args_gpu = {**fetch_all_c(i), **static_kwargs}
     # posterior predictive draws
 
-    post_samples = post_pred_dist(rng_key_post, **model_args_post)
+    # posterior predictives
+    cpu_device = jax.devices("cpu")[0]
+    jax.config.update("jax_default_device", cpu_device)
+    # model_args_cpu = [ jax.device_put(arg, cpu_device) if isinstance(arg, jax.Array) else arg for arg in model_args_gpu]
+    model_args_cpu = {
+        k: jax.device_put(v, cpu_device) if isinstance(v, jax.Array) else v
+        for k, v in model_args_gpu.items()
+    }
+    post_samples = post_pred_dist(rng_key_post, **model_args_cpu)
         
     # rng_key, rng_key_predict = random.split(rng_key, 2)
     # post_samples = predict_mcmc(model, rng_key, mcmc_samples2, Y_u_sites, model_args_post)
@@ -433,6 +444,75 @@ def post_Y_predictive(rng_key,
         numpy.save(os.path.join(inout.RESULTS_DIR, f"post_samples_{site}.npy"), tensor)
 
 
+def save_posterior_summaries(mcmc_samples, output_dir="summaries"):
+    """
+    For each parameter in mcmc_samples, compute basic summaries across the
+    first axis (assumed to be the sample dimension) and save to CSV.
+
+    The CSV columns:
+        mean, std, median, 5.0%, 95.0%
+
+    If a parameter has shape (num_samples, d1, d2, ...),
+    each flattened element (d1, d2, ...) gets its own row in the CSV,
+    using a multi-index that records the sub-dimension index.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    for param_name, values in mcmc_samples.items():
+        # values shape: (num_samples, d1, d2, ...)
+        if values.ndim < 1:
+            # Shouldn't happen in typical MCMC samples, but just in case
+            continue
+
+        # Convert to numpy (if it's JAX array) so we can use np.ndindex, etc.
+        values_np = np.asarray(values)
+
+        # Flatten the sample dimension vs. the rest
+        num_samples = values_np.shape[0]
+        trailing_shape = values_np.shape[1:]  # (d1, d2, ...)
+
+        # We'll create a list of all trailing indices, e.g. (i, j, ...)
+        all_indices = list(np.ndindex(trailing_shape))  # e.g. [(0,0), (0,1), ..., (d1-1, d2-1)]
+
+        # Reshape to (num_samples, -1) so each element across trailing dims is a column
+        flattened = values_np.reshape(num_samples, -1)  # shape: (num_samples, d1*d2*...)
+
+        # Compute summary stats for each "column" (each param element)
+        means = np.mean(flattened, axis=0)
+        sds = np.std(flattened, axis=0)
+        medians = np.median(flattened, axis=0)
+        p5 = np.percentile(flattened, 5, axis=0)
+        p95 = np.percentile(flattened, 95, axis=0)
+
+        # Build a DataFrame: one row per element in trailing dims
+        df = pd.DataFrame({
+            "mean": means,
+            "std": sds,
+            "median": medians,
+            "5.0%": p5,
+            "95.0%": p95,
+        })
+
+        # If the parameter is scalar per sample, then trailing_shape=().
+        # Otherwise, we can use a MultiIndex to indicate which element each row refers to.
+        if len(trailing_shape) > 0:
+            # Create a multi-index from all_indices
+            df.index = pd.MultiIndex.from_tuples(
+                all_indices,
+                names=[f"dim_{i}" for i in range(len(trailing_shape))]
+            )
+        else:
+            # No trailing dims, just name the index
+            df.index.name = "element_idx"
+
+        # Save to CSV
+        out_path = os.path.join(output_dir, f"{param_name.replace('/', '_')}.csv")
+        df.to_csv(out_path)
+        print(f"Saved summary for '{param_name}' -> {out_path}")
+
+    print("All parameter summaries saved.")
+
+
 H_CUTOFFS = {"11" : 10, "10": 9, "5" : 4}
 
 def main():
@@ -488,6 +568,10 @@ def main():
 
     print("Loaded MCMC samples:", samples.keys())
 
+    samples2 = remove_first_dim(samples)
+    
+    save_posterior_summaries(samples2)
+    
     # ----------- 6) Optional Posterior Summaries -----------
     # summary = npr.diagnostics.summary(samples)
     # print("MCMC Summary:\n", summary)
