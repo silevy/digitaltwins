@@ -130,6 +130,22 @@ def predict_mcmc(model, rng_key, samples, Y_u_sites, model_args_post):
         results.append(trace[Y_u_sites]["value"])
     return jnp.stack(results, axis=1)  # Combine along sample dimension
 
+import jax.numpy as jnp
+
+def remove_first_dim(samples_dict):
+    """
+    Returns a copy of samples_dict where each array's
+    first dimension has been removed (assuming size=1).
+    """
+    new_dict = {}
+    for k, v in samples_dict.items():
+        # Check that the first dim is actually 1
+        if v.shape[0] != 1:
+            raise ValueError(f"Expected first dimension to be 1, but got {v.shape} for key '{k}'.")
+        
+        # Remove the first dimension
+        new_dict[k] = jnp.squeeze(v, axis=0)
+    return new_dict
 
 
 def reconstruct_mcmc(rng_key, model, mcmc_samples, fetch_all_u, fetch_all_c, N_batch, static_kwargs, args):
@@ -181,14 +197,16 @@ def reconstruct_mcmc(rng_key, model, mcmc_samples, fetch_all_u, fetch_all_c, N_b
     Y_u_sites = list(fetch_all_u(0))
     Y_u_orig, Y_u_post = {}, {}
     
+    mcmc_samples2 = remove_first_dim(mcmc_samples)
+
     # 1) Create a Predictive object using MCMC posterior samples
     post_pred_dist = infer.Predictive(
         model=model,
-        posterior_samples=mcmc_samples,  # <--- key difference vs SVI
+        posterior_samples=mcmc_samples2,  # <--- key difference vs SVI
         # num_samples=100,                 # how many draws from each chain
         parallel=True,
-        return_sites=Y_u_sites
-        # batch_ndims=2
+        return_sites=Y_u_sites,
+        batch_ndims=1
     )
 
     # model_args_post = {**fetch_all_c(i), **static_kwargs}
@@ -205,31 +223,32 @@ def reconstruct_mcmc(rng_key, model, mcmc_samples, fetch_all_u, fetch_all_c, N_b
     #         Y_u_post[site] = post_samples[site]
 
     # 2) Loop over each data batch
-    for i in range(N_batch):
-        model_args_post = {**fetch_all_c(i), **static_kwargs}
-        # posterior predictive draws
+    # for i in range(N_batch):
+    i = 0
+    model_args_post = {**fetch_all_c(i), **static_kwargs}
+    # posterior predictive draws
 
-        post_samples = post_pred_dist(rng_key_post, **model_args_post)
-            
-        # rng_key, rng_key_predict = random.split(rng_key, 2)
-        # post_samples = predict_mcmc(model, rng_key, mcmc_samples, Y_u_sites, model_args_post)
-        # vmap_args = (
-        #     mcmc_samples,
-        #     random.split(rng_key_predict, args.num_samples * args.num_chains),
-        # )
-        # post_samples = vmap(
-        #     lambda samples, rng_key: predict_mcmc(model, rng_key, samples, Y_u_sites, **model_args_post)
-        # )(*vmap_args)
-        # post_samples = post_samples[..., 0]
+    post_samples = post_pred_dist(rng_key_post, **model_args_post)
         
-        for site in Y_u_sites:
-            # store original and predicted
-            if site in Y_u_post:
-                Y_u_orig[site] = jnp.concatenate([Y_u_orig[site], fetch_all_u(i)[site]], axis=0)
-                Y_u_post[site] = jnp.concatenate([Y_u_post[site], post_samples[site]], axis=1)
-            else:
-                Y_u_orig[site] = fetch_all_u(i)[site]
-                Y_u_post[site] = post_samples[site]
+    # rng_key, rng_key_predict = random.split(rng_key, 2)
+    # post_samples = predict_mcmc(model, rng_key, mcmc_samples2, Y_u_sites, model_args_post)
+    # vmap_args = (
+    #     mcmc_samples2,
+    #     random.split(rng_key_predict, args.num_samples * args.num_chains),
+    # )
+    # post_samples = vmap(
+    #     lambda samples, rng_key: predict_mcmc(model, rng_key, samples, Y_u_sites, **model_args_post)
+    # )(*vmap_args)
+    # post_samples = post_samples[..., 0]
+    
+    for site in Y_u_sites:
+        # store original and predicted
+        if site in Y_u_post:
+            Y_u_orig[site] = jnp.concatenate([Y_u_orig[site], fetch_all_u(i)[site]], axis=0)
+            Y_u_post[site] = jnp.concatenate([Y_u_post[site], post_samples[site]], axis=1)
+        else:
+            Y_u_orig[site] = fetch_all_u(i)[site]
+            Y_u_post[site] = post_samples[site]
 
     # 3) Compute MAE (or any other metric) and save .npy files
     f_mae = lambda x: jnp.mean(jnp.abs(x), axis=(0,2))

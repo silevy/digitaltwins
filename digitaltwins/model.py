@@ -351,7 +351,7 @@ def model_mcmc(Y_u_1_11: jnp.ndarray = None,   # uncommon variables, in scale po
         "z_nn",
         util.IdealPointNN_mcmc(hidden_size1=hidden_dim, hidden_size2=hidden_dim * 2, output_size=1),
         prior=z_nn_prior,
-        input_shape=Y_c.shape,
+        input_shape=(Y_c.shape[2],),
         # input_shape=jnp.expand_dims(Y_c, axis=0).shape
     )
 

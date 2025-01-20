@@ -185,7 +185,19 @@ class IdealPointNN_mcmc(nn.Module):
         # x = x.reshape(-1, x.shape[-1])  # Flatten all dimensions except the last one
         # print(f"shape of x: {x.shape}")
         # x = self.norm_layer(x)
+        # x = self.norm_layer(x)
+
+
+
+        # Suppose x can be (N, 354) or (S, N, 354)
+        # Flatten all leading dims into one combined batch:
+        orig_shape = x.shape
+        x = x.reshape(-1, orig_shape[-1])  # e.g. (N, 354) or (S*N, 354)
+
         x = self.norm_layer(x)
+
+        # optional: for a standard feed-forward net, you might keep it flat, or reshape back
+        x = x.reshape(orig_shape[:-1] + (-1,))
         # x = nn.tanh(self.layer1(x))
         # x = nn.tanh(self.layer2(x))
         x = nn.tanh(self.layer(x))
