@@ -451,7 +451,7 @@ def main():
 
     key = random.PRNGKey(0) # initial key for pseudorandom number generator
     K, T = 3, 10 # no of competitors, no of time periods (quarters), 
-    N1, N2, N3 = 5000, 5000, 5000 # no of customers
+    N1, N2, N3 = args.cust_per_firm, args.cust_per_firm, args.cust_per_firm # no of customers
     N = N1 + N2 + N3
     Ju1, Ju2, Ju3,  = 4, 1, 2 # no of unique percpetion questions
     J_c, J_o = 321, 33 # number of static + optim variables

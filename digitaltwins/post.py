@@ -590,6 +590,7 @@ def main():
     # Then you can do something like:
     posterior_means = {k: v.mean(axis=0) for k, v in flattened_samples.items()}
     # Compare posterior_means[k] vs. true_params[k] (for matching shapes, etc.)
+    plot_parameter_estimates(true_params, posterior_means, out_folder="parameter_sim_plots")
 
 
     # ----------- 6) Optional Posterior Summaries -----------

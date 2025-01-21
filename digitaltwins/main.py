@@ -165,7 +165,7 @@ def estimate_svi(rng_key, target_model, target_guide, args):
  
     t_start = time.time()
 
-    total_train_number_customers =  ( 3 * (5000 - args.train_test) * 10 ) 
+    total_train_number_customers =  ( 3 * (args.cust_per_firm - args.train_test) * 10 ) 
     total_test_number_customers = ( 3 * args.train_test * 10 ) 
 
     for i in range(args.num_epochs):

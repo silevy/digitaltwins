@@ -30,5 +30,7 @@ def get_parser():
     parser.add_argument('--num-chains', default=1, type=int, help='Number of chains (parallel or sequential)')
     parser.add_argument('--mcmc-output', default='mcmc_samples.pkl', type=str,
                         help='Filename to save MCMC samples (Pickle)')
+    # For Simulation
+    parser.add_argument('--cust-per-firm', default=5000, type=int,  help='Number of simulated customers per firm')
 
     return parser

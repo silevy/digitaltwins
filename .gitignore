@@ -166,4 +166,4 @@ fit_results/
 results/
 simulated_data/
 summaries/
-parameter_sim_plots/
+# parameter_sim_plots/
